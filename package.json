@@ -1,18 +1,13 @@
 {
   "name": "tezlaw-telegram-bot",
   "version": "1.0.0",
-  "description": "Telegram immigration assistant bot for Tez Law P.C.",
+  "description": "Tez Law P.C. Telegram immigration assistant bot",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "dev": "nodemon bot.js"
+    "start": "node bot.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.0",
-    "dotenv": "^16.0.0",
-    "node-telegram-bot-api": "^0.66.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.0"
+    "axios": "^1.6.0",
+    "express": "^4.18.0"
   }
 }
