@@ -1,149 +1,132 @@
-require("dotenv").config();
-const TelegramBot = require("node-telegram-bot-api");
-const Anthropic = require("@anthropic-ai/sdk");
+const express = require("express");
+const axios = require("axios");
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const app = express();
+app.use(express.json());
 
-// In-memory conversation store (use Redis/DB for production)
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const PORT = process.env.PORT || 3000;
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
+
 const conversations = {};
-const leadData = {};
 
-const FIRM_INFO = {
-  name: "Tez Law P.C.",
-  attorney: "JJ Zhang",
-  phone: "626-678-8677",
-  email: "jj@tezlawfirm.com",
-  location: "West Covina, California",
-};
+const SYSTEM_PROMPT = `You are a helpful immigration law assistant for Tez Law P.C., a law firm based in West Covina, California. The firm's contact information is:
+- Phone: 626-678-8677
+- Email: jj@tezlawfirm.com
+- Attorney: JJ Zhang
 
-const SYSTEM_PROMPT = `You are an immigration law assistant for ${FIRM_INFO.name}, a law firm in ${FIRM_INFO.location} run by attorney ${FIRM_INFO.attorney}. 
+Your role:
+1. Answer general immigration questions clearly and helpfully (EB-1, EB-2, EB-3, asylum, withholding of removal, adjustment of status, family petitions, DACA, TPS, visas, etc.)
+2. Proactively collect lead information when someone seems like a potential client: ask for their name, their immigration situation/visa type they need, their country of origin, and a contact email or phone.
+3. When you cannot answer a question or the person needs legal representation, always provide the firm contact info AND offer to collect their information so the attorney can follow up.
 
-YOUR ROLE:
-- Answer general immigration questions helpfully and accurately
-- Handle inquiries about: family-based immigration, employment-based visas (EB-1, EB-2, EB-3), asylum, removal defense, green cards, naturalization, deportation defense, and related matters
-- Collect lead information when appropriate (name, visa type of interest, brief situation)
-- Communicate fluently in English, Spanish, and Chinese (Simplified) — detect the user's language and respond in kind
+IMPORTANT RULES:
+- You are NOT a licensed attorney and cannot give legal advice. Always clarify that your answers are general information only and they should consult with Attorney JJ Zhang for advice specific to their situation.
+- Do NOT quote specific fees or timelines unless they are well-established government filing fees.
+- Do NOT make promises about case outcomes.
+- Be warm, professional, and reassuring.
+- Respond in whatever language the user writes in. You support English, Spanish, and Chinese Simplified.
+- Keep responses concise - this is a messaging app, not a document.
+- When collecting lead info, do it naturally in the conversation.
 
-IMPORTANT BOUNDARIES:
-- You are NOT providing legal advice — always clarify this when discussing specific situations
-- Do NOT quote specific filing fees (they change) — say fees vary and a consultation is needed
-- Do NOT make promises about case outcomes
-- For complex or specific legal situations, always recommend a consultation
+Firm focus areas: employment-based immigration, asylum, withholding of removal, family-based immigration, removal defense, civil litigation.`;
 
-LEAD COLLECTION:
-When a user has a specific situation or seems interested in hiring the firm, naturally collect:
-1. Their first name
-2. What type of immigration matter they need help with
-3. A brief description of their situation
-Then let them know the firm will follow up.
+async function sendMessage(chatId, text) {
+  try {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: text,
+      parse_mode: "Markdown",
+    });
+  } catch (err) {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: text,
+    });
+  }
+}
 
-WHEN YOU CAN'T ANSWER or the question requires legal advice:
-- Provide the firm's contact info: phone ${FIRM_INFO.phone}, email ${FIRM_INFO.email}
-- Offer to take their name and contact situation so the firm can follow up
-- Always be warm and helpful, never dismissive
-
-TONE: Professional but approachable. Concise — this is a messaging app, not an essay. Use plain language.
-
-Start conversations warmly. If the user writes in Spanish, respond fully in Spanish. If they write in Chinese, respond fully in Chinese (Simplified).`;
-
-async function getClaudeResponse(chatId, userMessage) {
+async function askClaude(chatId, userMessage) {
   if (!conversations[chatId]) {
     conversations[chatId] = [];
   }
 
-  conversations[chatId].push({
-    role: "user",
-    content: userMessage,
-  });
+  conversations[chatId].push({ role: "user", content: userMessage });
 
-  // Keep last 20 messages to manage context
-  if (conversations[chatId].length > 20) {
-    conversations[chatId] = conversations[chatId].slice(-20);
-  }
+  const recentHistory = conversations[chatId].slice(-20);
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: conversations[chatId],
-  });
+  const response = await axios.post(
+    "https://api.anthropic.com/v1/messages",
+    {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+      system: SYSTEM_PROMPT,
+      messages: recentHistory,
+    },
+    {
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+    }
+  );
 
-  const assistantMessage = response.content[0].text;
-
-  conversations[chatId].push({
-    role: "assistant",
-    content: assistantMessage,
-  });
+  const assistantMessage = response.data.content[0].text;
+  conversations[chatId].push({ role: "assistant", content: assistantMessage });
 
   return assistantMessage;
 }
 
-// Welcome message on /start
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  conversations[chatId] = []; // Reset conversation
+app.post("/webhook", async (req, res) => {
+  res.sendStatus(200);
 
-  const welcomeMessage = `👋 Welcome to ${FIRM_INFO.name}!
+  const update = req.body;
 
-I'm the firm's virtual assistant. I can help answer general immigration questions in English, Spanish, or Chinese (中文 / Español).
+  if (!update.message || !update.message.text) return;
 
-You can ask me about:
-• 🇺🇸 Green cards & family petitions
-• 💼 Work visas (EB-1, EB-2, EB-3, H-1B)
-• 🛡️ Asylum & removal defense
-• 📋 Naturalization & citizenship
-• And more...
-
-For a consultation with Attorney ${FIRM_INFO.attorney}, contact us:
-📞 ${FIRM_INFO.phone}
-📧 ${FIRM_INFO.email}
-
-How can I help you today?`;
-
-  bot.sendMessage(chatId, welcomeMessage);
-});
-
-// Reset conversation
-bot.onText(/\/reset/, (msg) => {
-  const chatId = msg.chat.id;
-  conversations[chatId] = [];
-  bot.sendMessage(
-    chatId,
-    "Conversation reset. How can I help you? / ¿En qué puedo ayudarte? / 我能帮您什么？"
-  );
-});
-
-// Contact info command
-bot.onText(/\/contact/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(
-    chatId,
-    `📍 ${FIRM_INFO.name}\n👨‍⚖️ Attorney: ${FIRM_INFO.attorney}\n📞 ${FIRM_INFO.phone}\n📧 ${FIRM_INFO.email}\n📍 ${FIRM_INFO.location}`
-  );
-});
-
-// Handle all other messages
-bot.on("message", async (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text;
-
-  // Skip commands
-  if (!text || text.startsWith("/")) return;
-
-  // Show typing indicator
-  bot.sendChatAction(chatId, "typing");
+  const chatId = update.message.chat.id;
+  const userText = update.message.text;
+  const firstName = update.message.from?.first_name || "there";
 
   try {
-    const response = await getClaudeResponse(chatId, text);
-    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
-  } catch (error) {
-    console.error("Error:", error);
-    bot.sendMessage(
+    if (userText === "/start") {
+      conversations[chatId] = [];
+      await sendMessage(
+        chatId,
+        `👋 Hi ${firstName}! Welcome to *Tez Law P.C.*\n\nI'm the firm's immigration assistant. I can help answer general questions about visas, green cards, asylum, and other immigration matters in English, Spanish, or Chinese.\n\nHow can I help you today?\n\n_Para español, escríbame en español. 如需中文服务，请用中文留言。_`
+      );
+      return;
+    }
+
+    if (userText === "/reset") {
+      conversations[chatId] = [];
+      await sendMessage(chatId, "Conversation reset. How can I help you?");
+      return;
+    }
+
+    if (userText === "/contact") {
+      await sendMessage(
+        chatId,
+        `📞 *Tez Law P.C.*\n\n• Attorney: JJ Zhang\n• Phone: 626-678-8677\n• Email: jj@tezlawfirm.com\n• Location: West Covina, California\n\nFeel free to call or email to schedule a consultation.`
+      );
+      return;
+    }
+
+    const reply = await askClaude(chatId, userText);
+    await sendMessage(chatId, reply);
+  } catch (err) {
+    console.error("Error:", err.response?.data || err.message);
+    await sendMessage(
       chatId,
-      `Sorry, I encountered an error. Please try again or contact us directly:\n📞 ${FIRM_INFO.phone}\n📧 ${FIRM_INFO.email}`
+      "Sorry, I'm having a technical issue. Please contact the firm directly:\n📞 626-678-8677\n📧 jj@tezlawfirm.com"
     );
   }
 });
 
-console.log(`✅ ${FIRM_INFO.name} Telegram bot is running...`);
+app.get("/", (req, res) => res.send("Tez Law Bot is running."));
+
+app.listen(PORT, () => {
+  console.log(`Bot server running on port ${PORT}`);
+});
