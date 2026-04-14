@@ -179,38 +179,28 @@ async function checkAndNotifyLead(userId, userMessage, botReply, platform) {
     const email = hasEmail ? userMessage.match(emailRegex)?.[0] : null;
 
     const history = conversations[userId] || [];
-    const recentMessages = history.slice(-10).map(m =>
-      `${m.role === "user" ? "Client" : "Zara"}: ${m.content}`
+    const recentMessages = history.slice(-6).map(m =>
+      `${m.role === "user" ? "Client" : "Zara"}: ${m.content.substring(0, 100)}`
     ).join("\n");
 
-    const MS_EMAIL = process.env.GMAIL_EMAIL;
-    const MS_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
+    const TEAM_CHAT_ID = process.env.TEAM_TELEGRAM_CHAT_ID;
+    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_TOKEN;
 
-    if (MS_EMAIL && MS_APP_PASSWORD) {
-      // Send via Microsoft 365 SMTP using nodemailer
-      const nodemailer = require("nodemailer");
+    if (TEAM_CHAT_ID && TELEGRAM_BOT_TOKEN) {
+      const message =
+        `🆕 New Lead from ${platform}!\n\n` +
+        `${phone ? `📞 Phone: ${phone}\n` : ""}` +
+        `${email ? `📧 Email: ${email}\n` : ""}` +
+        `\n💬 Recent chat:\n${recentMessages}\n\n` +
+        `⚡ Please follow up ASAP!`;
 
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: MS_EMAIL,
-          pass: MS_APP_PASSWORD,
-        }
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        chat_id: TEAM_CHAT_ID,
+        text: message,
+        parse_mode: "Markdown"
       });
 
-      await transporter.sendMail({
-        from: `Zara Bot <${MS_EMAIL}>`,
-        to: "info@tezlawfirm.com",
-        subject: `🆕 New Lead from ${platform} — Follow Up Needed`,
-        text:
-          `A potential client just shared their contact info on ${platform}.\n\n` +
-          `${phone ? `📞 Phone: ${phone}\n` : ""}` +
-          `${email ? `📧 Email: ${email}\n` : ""}` +
-          `\n---\nRecent conversation:\n${recentMessages}\n\n` +
-          `Please follow up as soon as possible.\n\n— Zara, Tez Law Assistant`
-      });
-
-      console.log(`✅ Lead notification sent — ${phone || email}`);
+      console.log(`✅ Lead notification sent to team Telegram — ${phone || email}`);
     } else {
       console.log(`LEAD DETECTED on ${platform}: ${phone || email}`);
     }
