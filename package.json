@@ -1,13 +1,14 @@
 {
   "name": "tezlaw-telegram-bot",
   "version": "1.0.0",
-  "description": "Tez Law P.C. Telegram immigration assistant bot",
+  "description": "Tez Law P.C. Telegram bot powered by Zara",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
-    "express": "^4.18.0"
+    "express": "^4.18.0",
+    "nodemailer": "^6.9.0"
   }
 }
