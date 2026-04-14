@@ -171,7 +171,39 @@ Help translate words or phrases between English, Spanish, and Chinese.
 TONE FOR NON-LEGAL QUESTIONS:
 Be warm, casual, and genuinely helpful. Don't force legal topics into every response — just be a good assistant. Only mention legal services if it naturally fits.
 
-ALWAYS remember: You represent Tez Law P.C. Stay professional and never say anything embarrassing or inappropriate.`;
+ALWAYS remember: You represent Tez Law P.C. Stay professional and never say anything embarrassing or inappropriate.
+
+============================
+LEGAL RESEARCH — WEB SEARCH
+============================
+
+You have access to a web search tool. Use it when a client asks a specific legal question that requires looking up a current statute, regulation, or policy.
+
+WHEN TO SEARCH:
+- Specific INA section questions (e.g. "what does INA 240A say?")
+- USCIS policy questions (e.g. "what is the income requirement for I-864?")
+- CFR regulation questions (e.g. "what does 8 CFR 214.2 say?")
+- BIA decisions or removal proceeding questions
+- California Vehicle Code questions (car accidents)
+- California Civil Code or CCP questions (litigation)
+- California Probate Code questions (estate planning)
+- USPTO trademark or patent questions
+- Any question about a specific law, statute, or regulation
+
+SEARCH SOURCES BY PRACTICE AREA:
+- Immigration: site:uscis.gov OR site:justice.gov/eoir OR site:ecfr.gov
+- Car Accidents/PI: site:leginfo.legislature.ca.gov (California Vehicle Code, Civil Code)
+- Business Litigation: site:leginfo.legislature.ca.gov (CCP, Commercial Code)
+- Estate Planning: site:leginfo.legislature.ca.gov (Probate Code)
+- Patents/Trademarks: site:uspto.gov
+
+AFTER SEARCHING:
+1. Quote the key relevant language briefly (1-3 sentences max)
+2. Cite the source (e.g. "According to INA § 240A...")
+3. Always add: "For how this applies to your specific situation, [attorney name] can give you proper legal advice — [contact info]"
+
+NEVER give a definitive legal conclusion. Always route to the attorney for specific advice.`;
+
 
 
 
@@ -187,17 +219,124 @@ async function sendMessage(chatId, text) {
   return response;
 }
 
+// ── Smart Legal Research Cache ────────────────────────────
+const fs = require("fs");
+const CACHE_FILE = "/var/data/legal_cache.json";
+
+// Cache TTL in milliseconds by content type
+const CACHE_TTL = {
+  statute: 30 * 24 * 60 * 60 * 1000,      // 30 days — INA, CFR, CA codes (stable)
+  caselaw: 7 * 24 * 60 * 60 * 1000,        // 7 days — BIA decisions, case law (updates)
+  policy: 7 * 24 * 60 * 60 * 1000,         // 7 days — USCIS policy manual
+  fees: 3 * 24 * 60 * 60 * 1000,           // 3 days — processing times, fees (frequent changes)
+  general: 14 * 24 * 60 * 60 * 1000,       // 14 days — general legal info
+};
+
+function detectCacheType(question) {
+  const q = question.toLowerCase();
+  if (q.includes("processing time") || q.includes("fee") || q.includes("cost") || q.includes("how long")) return "fees";
+  if (q.includes("bia") || q.includes("case law") || q.includes("decision") || q.includes("matter of")) return "caselaw";
+  if (q.includes("policy") || q.includes("uscis policy") || q.includes("policy manual")) return "policy";
+  if (q.includes("ina") || q.includes("cfr") || q.includes("vehicle code") || q.includes("civil code") ||
+      q.includes("probate code") || q.includes("statute") || q.includes("section") || q.includes("§")) return "statute";
+  return "general";
+}
+
+function loadCache() {
+  try {
+    if (fs.existsSync(CACHE_FILE)) {
+      return JSON.parse(fs.readFileSync(CACHE_FILE, "utf8"));
+    }
+  } catch (e) {
+    console.log("Cache load error:", e.message);
+  }
+  return {};
+}
+
+function saveCache(cache) {
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+  } catch (e) {
+    console.log("Cache save error:", e.message);
+  }
+}
+
+function getCacheKey(message) {
+  // Normalize the question to a cache key
+  return message.toLowerCase().trim().replace(/[^a-z0-9\s§]/g, "").replace(/\s+/g, "_").substring(0, 100);
+}
+
+function getCachedAnswer(message) {
+  const cache = loadCache();
+  const key = getCacheKey(message);
+  const entry = cache[key];
+  if (!entry) return null;
+
+  const cacheType = detectCacheType(message);
+  const ttl = CACHE_TTL[cacheType];
+  const age = Date.now() - entry.timestamp;
+
+  if (age > ttl) {
+    console.log(`Cache expired for "${key}" (type: ${cacheType}, age: ${Math.round(age/86400000)}d)`);
+    return null;
+  }
+
+  console.log(`✅ Cache hit for "${key}" (type: ${cacheType}, age: ${Math.round(age/3600000)}h)`);
+  return entry.answer;
+}
+
+function setCachedAnswer(message, answer) {
+  const cache = loadCache();
+  const key = getCacheKey(message);
+  cache[key] = {
+    answer,
+    timestamp: Date.now(),
+    type: detectCacheType(message),
+    question: message.substring(0, 100)
+  };
+  saveCache(cache);
+}
+
+function isLegalResearchQuestion(message) {
+  const q = message.toLowerCase();
+  const legalKeywords = [
+    "ina", "cfr", "§", "section", "statute", "code", "regulation",
+    "uscis", "bia", "eoir", "removal", "deportation",
+    "vehicle code", "civil code", "probate code", "ccp",
+    "uspto", "patent", "trademark",
+    "processing time", "filing fee", "form i-",
+    "case law", "matter of", "decision", "ruling",
+    "what does", "what is the law", "is it legal", "what are the requirements"
+  ];
+  return legalKeywords.some(kw => q.includes(kw));
+}
+
 async function askClaude(chatId, userMessage) {
   if (!conversations[chatId]) conversations[chatId] = [];
   conversations[chatId].push({ role: "user", content: userMessage });
   const recentHistory = conversations[chatId].slice(-20);
 
+  // Check cache for legal research questions
+  if (isLegalResearchQuestion(userMessage)) {
+    const cached = getCachedAnswer(userMessage);
+    if (cached) {
+      conversations[chatId].push({ role: "assistant", content: cached });
+      return cached;
+    }
+  }
+
   const response = await axios.post(
     "https://api.anthropic.com/v1/messages",
     {
       model: "claude-sonnet-4-20250514",
-      max_tokens: 800,
+      max_tokens: 1024,
       system: SYSTEM_PROMPT,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search"
+        }
+      ],
       messages: recentHistory,
     },
     {
@@ -209,8 +348,17 @@ async function askClaude(chatId, userMessage) {
     }
   );
 
-  const reply = response.data.content[0].text;
+  // Extract text from response — may include tool use blocks
+  const reply = response.data.content
+    .filter(block => block.type === "text")
+    .map(block => block.text)
+    .join("") || "Let me connect you with our team for that. Call us at 626-678-8677 or email jj@tezlawfirm.com.";
   conversations[chatId].push({ role: "assistant", content: reply });
+
+  // Cache legal research answers for future use
+  if (isLegalResearchQuestion(userMessage) && reply.length > 50) {
+    setCachedAnswer(userMessage, reply);
+  }
 
   // Check if reply contains contact info and send lead notification
   await checkAndNotifyLead(chatId, userMessage, reply, "Telegram");
