@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// ── CORS — allow tezlawfirm.com to call this API ──────────
+// ── CORS — allow tezlawfirm.com to call this API ──────────────
 app.use((req, res, next) => {
   const allowedOrigins = [
     "https://tezlawfirm.com",
@@ -483,8 +483,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// ── Web Chat Endpoint ─────────────────────────────────────
-// Used by the Zara chat widget on tezlawfirm.com
+// ── Web Chat Endpoint ─────────────────────────────────────────
 app.post("/chat", async (req, res) => {
   try {
     const { message, sessionId } = req.body;
@@ -495,12 +494,18 @@ app.post("/chat", async (req, res) => {
     res.json({ reply });
   } catch (err) {
     console.error("Web chat error:", err.message);
-    res.status(500).json({ reply: "Sorry, I\'m having a technical issue. Please call us at 626-678-8677 or email jj@tezlawfirm.com." });
+    res.status(500).json({ reply: "Sorry, I'm having a technical issue. Please call us at 626-678-8677 or email jj@tezlawfirm.com." });
   }
 });
 
 app.get("/", (req, res) => res.send("Tez Law P.C. Bot is running."));
 
+// ── Auto-Poster ───────────────────────────────────────────────
+const { scheduleDaily } = require("./autoposter");
+
 app.listen(PORT, () => {
   console.log(`Bot server running on port ${PORT}`);
+  // Start the daily auto-poster scheduler
+  scheduleDaily();
+  console.log("📅 WordPress auto-poster scheduler started.");
 });
