@@ -4,6 +4,23 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
+// ── CORS — allow tezlawfirm.com to call this API ──────────
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    "https://tezlawfirm.com",
+    "https://www.tezlawfirm.com",
+    "http://localhost:3000"
+  ];
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
+
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const PORT = process.env.PORT || 3000;
@@ -463,6 +480,22 @@ app.post("/webhook", async (req, res) => {
     } catch (e) {
       console.error("Failed to send error message:", e.message);
     }
+  }
+});
+
+// ── Web Chat Endpoint ─────────────────────────────────────
+// Used by the Zara chat widget on tezlawfirm.com
+app.post("/chat", async (req, res) => {
+  try {
+    const { message, sessionId } = req.body;
+    if (!message || !sessionId) {
+      return res.status(400).json({ error: "Missing message or sessionId" });
+    }
+    const reply = await askClaude(sessionId, message);
+    res.json({ reply });
+  } catch (err) {
+    console.error("Web chat error:", err.message);
+    res.status(500).json({ reply: "Sorry, I\'m having a technical issue. Please call us at 626-678-8677 or email jj@tezlawfirm.com." });
   }
 });
 
