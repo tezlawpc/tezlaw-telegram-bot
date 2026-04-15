@@ -15,6 +15,24 @@ const WP_URL            = process.env.WP_URL;           // https://tezlawfirm.co
 const WP_USER           = process.env.WP_USER;          // tezlawfirm
 const WP_APP_PASSWORD   = process.env.WP_APP_PASSWORD;  // Application Password from WordPress
 
+// ── JJ Zhang's voice profile ─────────────────────────────────
+const JJ_VOICE = `
+You are rewriting a legal blog post in the voice of JJ Zhang, managing attorney at Tez Law P.C.
+
+JJ's communication style:
+- Conversational and direct — like talking to a friend who happens to be a lawyer
+- Signature phrase: "Protect your rights — we handle the rest."
+- Uses "we" and "our team" when referring to the firm, never "I"
+- Short punchy sentences mixed with longer explanations
+- Never uses AI buzzwords: "In today's complex landscape", "navigating", "it's important to note", "comprehensive", "multifaceted"
+- Gets straight to the point — what happened, who it affects, what to do
+- Empathetic but practical — acknowledges stress then gives action steps
+- Ends sections with clear takeaways
+- Uses contractions naturally (you're, don't, we'll, it's)
+- Occasionally uses rhetorical questions to engage readers
+- Never guarantees outcomes or makes promises about results
+`;
+
 // ── State tracking (persisted to /var/data) ──────────────────
 const fs   = require("fs");
 const STATE_FILE = "/var/data/autoposter_state.json";
@@ -219,11 +237,17 @@ STRICT REQUIREMENTS:
 5. AUTHOR BOX at end of content:
 <div class="author-box" style="background:#f5f5f5;padding:20px;margin-top:30px;border-left:4px solid #c8a96e;">
 <strong>About the Author: JJ Zhang, Esq.</strong><br>
-JJ Zhang is the managing attorney at Tez Law P.C. in West Covina, California. Licensed to practice in California (Bar #326666), JJ represents clients in immigration courts, federal courts, and California state courts. <a href="https://tezlawfirm.com/contact/">Schedule a free consultation</a> today.
+JJ Zhang is the managing attorney at Tez Law P.C. Licensed to practice in California (Bar #326666), JJ represents clients in immigration courts, federal courts, and California state courts.<br><br>
+📞 <strong>626-678-8677</strong><br>
+💬 Chat with Zara: <a href="https://wa.me/16266788677" target="_blank">WhatsApp</a> · <a href="https://m.me/tezlawfirm" target="_blank">Messenger</a> · <a href="https://t.me/TEZJJBot" target="_blank">Telegram</a> · <a href="https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=gh_03f700f08037" target="_blank">WeChat</a> (24/7)<br>
+📋 Intake: <a href="https://link.v1ce.co/tezintake">https://link.v1ce.co/tezintake</a><br>
+🌐 <a href="https://tezlawfirm.com">www.tezlawfirm.com</a><br><br>
+<em>我們也會說中文 · Puede hablar español</em><br><br>
+<strong>Protect your rights — we handle the rest.</strong>
 </div>
 
 6. LEGAL DISCLAIMER at very end:
-<p style="font-size:12px;color:#666;margin-top:20px;"><em>Disclaimer: This article is for informational purposes only and does not constitute legal advice. Reading this article does not create an attorney-client relationship. Every case is different — contact Tez Law P.C. at 626-678-8677 or <a href="mailto:jj@tezlawfirm.com">jj@tezlawfirm.com</a> for advice specific to your situation. Results may vary.</em></p>
+<p style="font-size:12px;color:#666;margin-top:20px;"><em>Disclaimer: This article is for informational purposes only and does not constitute legal advice. Reading this article does not create an attorney-client relationship. Every case is different — contact Tez Law P.C. at 626-678-8677, email <a href="mailto:jj@tezlawfirm.com">jj@tezlawfirm.com</a>, or chat with Zara 24/7 on <a href="https://wa.me/16266788677" target="_blank">WhatsApp</a>, <a href="https://m.me/tezlawfirm" target="_blank">Messenger</a>, <a href="https://t.me/TEZJJBot" target="_blank">Telegram</a>, or <a href="https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=gh_03f700f08037" target="_blank">WeChat</a> for advice specific to your situation. Results may vary.</em></p>
 
 7. JSON-LD SCHEMA at very end (after disclaimer):
 <script type="application/ld+json">
@@ -267,16 +291,52 @@ Return ONLY this JSON (no markdown, no backticks, no other text):
 
   const raw = await askClaude(prompt, useSearch);
 
+  let postData;
   try {
     const cleaned = raw.replace(/```json|```/g, "").trim();
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
-    return JSON.parse(cleaned.substring(start, end + 1));
+    postData = JSON.parse(cleaned.substring(start, end + 1));
   } catch (e) {
     console.error("Failed to parse Claude response:", e.message);
     console.error("Raw response:", raw.substring(0, 500));
     return null;
   }
+
+  // Wait then humanize the content
+  await new Promise(r => setTimeout(r, 5000));
+  console.log("✍️ Humanizing post in JJ Zhang's voice...");
+
+  const humanizePrompt = `${JJ_VOICE}
+
+Rewrite the HTML content of this blog post in JJ Zhang's conversational voice.
+
+RULES:
+- Keep all HTML tags, internal links, FAQ structure, author box, disclaimer, and JSON-LD schema EXACTLY as they are
+- Only rewrite the visible text content
+- Make it sound like JJ Zhang wrote it personally
+- Use "Protect your rights — we handle the rest." naturally once, near the end CTA
+- Remove any AI-sounding phrases
+- Keep the same word count (do not shorten significantly)
+- Return ONLY the rewritten HTML content, nothing else
+
+ORIGINAL CONTENT:
+${postData.content.substring(0, 4000)}`;
+
+  try {
+    const humanized = await askClaude(humanizePrompt, false);
+    if (humanized && humanized.length > 500) {
+      postData.content = humanized;
+      console.log("✅ Post humanized successfully");
+    }
+  } catch (e) {
+    console.log("Humanization failed, using original:", e.message);
+  }
+
+  // Add AI disclosure to excerpt/meta
+  postData.metaDescription = postData.metaDescription || "";
+  
+  return postData;
 }
 
 // ─────────────────────────────────────────────────────────────
