@@ -178,17 +178,23 @@ Return your response in this exact JSON format (no markdown, no backticks):
 async function checkImmigrationNews(state) {
   console.log("📰 Checking immigration news...");
 
-  const prompt = `Search for the latest immigration law news from the past 48 hours. 
-Focus on: USCIS policy changes, executive orders, new visa rules, BIA decisions, removal/deportation policy, H-1B, EB-5, asylum, DACA, or any major immigration court decisions.
+  const prompt = `You are a news extraction tool. Search for US immigration law news from the past 48 hours.
 
-If you find 1-3 genuinely NEW and significant immigration news items from the past 48 hours, list them.
-If there is nothing truly new, say "NO_NEW_NEWS".
+CRITICAL INSTRUCTIONS - FOLLOW EXACTLY:
+1. Search for recent immigration news now
+2. Your response must ONLY contain one of these two formats - nothing else:
 
-Format if news found:
-NEWS_ITEM_1: [headline] | [1-2 sentence summary]
-NEWS_ITEM_2: [headline] | [1-2 sentence summary]
+FORMAT A (if news found):
+NEWS_ITEM_1: [exact headline] | [one sentence summary]
+NEWS_ITEM_2: [exact headline] | [one sentence summary]
 
-Be strict — only include items that are actually new in the past 48 hours, not general background info.`;
+FORMAT B (if no news):
+NO_NEW_NEWS
+
+DO NOT explain your search process. DO NOT say "let me search". DO NOT add any other text.
+ONLY output NEWS_ITEM lines or NO_NEW_NEWS. Nothing else.
+
+Search for: USCIS policy changes, executive orders, visa rule changes, H-1B updates, EB-5 news, deportation policy, immigration court decisions from the past 48 hours.`;
 
   const newsCheck = await askClaude(prompt, true);
   console.log("News check result:", newsCheck.substring(0, 200));
