@@ -69,12 +69,12 @@ async function askClaude(prompt, useWebSearch = false) {
 }
 
 // ── WordPress publish ─────────────────────────────────────────
-async function publishToWordPress({ title, content, category, tags }) {
+async function publishToWordPress({ title, content, category, tags, metaDescription, focusKeyword }) {
   const auth = Buffer.from(`${WP_USER}:${WP_APP_PASSWORD}`).toString("base64");
   console.log("Publishing to WordPress:", title?.substring(0, 50));
 
   // Get or create category ID
-  let categoryId = 1; // default: Uncategorized
+  let categoryId = 1;
   try {
     const catRes = await axios.get(`${WP_URL}/wp-json/wp/v2/categories?search=${encodeURIComponent(category)}`, {
       headers: { Authorization: `Basic ${auth}` }
@@ -82,7 +82,6 @@ async function publishToWordPress({ title, content, category, tags }) {
     if (catRes.data.length > 0) {
       categoryId = catRes.data[0].id;
     } else {
-      // Create category
       const newCat = await axios.post(`${WP_URL}/wp-json/wp/v2/categories`,
         { name: category },
         { headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" } }
@@ -90,14 +89,14 @@ async function publishToWordPress({ title, content, category, tags }) {
       categoryId = newCat.data.id;
     }
   } catch (e) {
-    console.log("Category lookup failed, using default:", e.message);
+    console.log("Category lookup failed:", e.message);
   }
 
-  try {
-    // Convert tag names to tag IDs
+  // Convert tag names to tag IDs
   let tagIds = [];
   try {
     for (const tagName of (tags || [])) {
+      await new Promise(r => setTimeout(r, 500)); // avoid WP rate limit
       const tagRes = await axios.get(`${WP_URL}/wp-json/wp/v2/tags?search=${encodeURIComponent(tagName)}`, {
         headers: { Authorization: `Basic ${auth}` }
       });
@@ -116,15 +115,37 @@ async function publishToWordPress({ title, content, category, tags }) {
     tagIds = [];
   }
 
-  const postRes = await axios.post(
+  // Build post data with Yoast SEO fields
+  const postData = {
+    title,
+    content,
+    status: "publish",
+    categories: [categoryId],
+    tags: tagIds,
+    excerpt: metaDescription || "",
+  };
+
+  // Add Yoast SEO meta if available
+  if (metaDescription || focusKeyword) {
+    postData.meta = {};
+    if (metaDescription) {
+      postData.meta._yoast_wpseo_metadesc = metaDescription;
+      postData.meta._yoast_wpseo_opengraph_description = metaDescription;
+      postData.meta._yoast_wpseo_twitter_description = metaDescription;
+    }
+    if (focusKeyword) {
+      postData.meta._yoast_wpseo_focuskw = focusKeyword;
+    }
+    if (title) {
+      postData.meta._yoast_wpseo_title = title + " - Tez Law P.C.";
+      postData.meta._yoast_wpseo_opengraph_title = title;
+    }
+  }
+
+  try {
+    const postRes = await axios.post(
       `${WP_URL}/wp-json/wp/v2/posts`,
-      {
-        title,
-        content,
-        status: "publish",
-        categories: [categoryId],
-        tags: tagIds,
-      },
+      postData,
       {
         headers: {
           Authorization: `Basic ${auth}`,
@@ -132,6 +153,7 @@ async function publishToWordPress({ title, content, category, tags }) {
         },
       }
     );
+    console.log("✅ WordPress published, ID:", postRes.data.id);
     return postRes.data;
   } catch (e) {
     console.error("WordPress post error:", e.response?.status, JSON.stringify(e.response?.data)?.substring(0, 300));
@@ -156,39 +178,95 @@ async function notifyTeam(message) {
   }
 }
 
-// ── Generate blog post with Claude ────────────────────────────
+// ── Generate SEO-optimized blog post with Claude ─────────────
 async function generatePost({ topic, practiceArea, context, useSearch }) {
-  const prompt = `You are a legal content writer for Tez Law P.C., an immigration and personal injury law firm in West Covina, California.
 
-Write a high-quality, SEO-optimized WordPress blog post about the following topic:
+  // Determine location context based on practice area
+  const locationContext = practiceArea === "Immigration Law" || practiceArea === "Immigration"
+    ? "nationwide United States (Tez Law handles immigration cases across the entire US)"
+    : "Southern California, specifically Los Angeles County, Orange County, San Bernardino County, and Riverside County (the Inland Empire). Key cities include West Covina, Los Angeles, Anaheim, San Bernardino, Riverside, Ontario, Pomona, and surrounding areas.";
+
+  const prompt = `You are an expert legal content writer and SEO specialist for Tez Law P.C., a law firm in West Covina, California. JJ Zhang is the managing attorney (California Bar #326666).
+
+Write a COMPREHENSIVE, SEO-optimized WordPress blog post about:
 
 TOPIC: ${topic}
 PRACTICE AREA: ${practiceArea}
-ADDITIONAL CONTEXT: ${context || "None"}
+CONTEXT: ${context || "None"}
+LOCATION: ${locationContext}
 
-Requirements:
-- Title: compelling, includes a primary keyword, under 65 characters for SEO
-- Word count: 600-900 words
-- Structure: Introduction, 3-4 main sections with H2 headings, conclusion with CTA
-- Include practical information relevant to California residents
-- End with a call-to-action to contact Tez Law P.C. at 626-678-8677 or jj@tezlawfirm.com
-- Use natural language, not overly formal
-- Include relevant keywords naturally throughout
-- Mention West Covina or Los Angeles where appropriate
-- Do NOT use placeholder text or say "insert X here"
-- Write the full post, ready to publish
+STRICT REQUIREMENTS:
 
-Return your response in this exact JSON format (no markdown, no backticks):
+1. TITLE (under 65 characters, include primary keyword + location if PI/local, or keyword + year if immigration)
+
+2. META DESCRIPTION (150-160 characters, includes keyword + clear CTA)
+
+3. CONTENT STRUCTURE (1,500-2,000 words total):
+   - Opening paragraph: hook + who this affects + what they should do
+   - H2: Background/What This Means
+   - H2: How This Affects [Specific Audience]
+   - H2: What You Should Do Now (actionable steps)
+   - H2: Why Choose Tez Law P.C.
+   - H2: Frequently Asked Questions
+     * Include 5 FAQ items as <div class="faq-item"><h3>Question?</h3><p>Answer</p></div>
+   - Closing CTA paragraph
+
+4. INTERNAL LINKS - include these exact links naturally in the content:
+   - Immigration topics: <a href="https://tezlawfirm.com/immigration/">immigration services</a>
+   - PI topics: <a href="https://tezlawfirm.com/home/personal-injury/">personal injury attorney serving LA, Orange, San Bernardino, and Riverside Counties</a>
+   - General: <a href="https://tezlawfirm.com/contact/">free consultation</a>
+
+5. AUTHOR BOX at end of content:
+<div class="author-box" style="background:#f5f5f5;padding:20px;margin-top:30px;border-left:4px solid #c8a96e;">
+<strong>About the Author: JJ Zhang, Esq.</strong><br>
+JJ Zhang is the managing attorney at Tez Law P.C. in West Covina, California. Licensed to practice in California (Bar #326666), JJ represents clients in immigration courts, federal courts, and California state courts. <a href="https://tezlawfirm.com/contact/">Schedule a free consultation</a> today.
+</div>
+
+6. LEGAL DISCLAIMER at very end:
+<p style="font-size:12px;color:#666;margin-top:20px;"><em>Disclaimer: This article is for informational purposes only and does not constitute legal advice. Reading this article does not create an attorney-client relationship. Every case is different — contact Tez Law P.C. at 626-678-8677 or <a href="mailto:jj@tezlawfirm.com">jj@tezlawfirm.com</a> for advice specific to your situation. Results may vary.</em></p>
+
+7. JSON-LD SCHEMA at very end (after disclaimer):
+<script type="application/ld+json">
 {
-  "title": "post title here",
-  "content": "full HTML post content here with <h2>, <p>, <ul> tags",
-  "category": "category name (Immigration, Personal Injury, Business Law, Trademarks, or Estate Planning)",
-  "tags": ["tag1", "tag2", "tag3"]
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "[POST TITLE]",
+  "author": {
+    "@type": "Person",
+    "name": "JJ Zhang",
+    "jobTitle": "Managing Attorney",
+    "worksFor": {
+      "@type": "LegalService",
+      "name": "Tez Law P.C.",
+      "url": "https://tezlawfirm.com"
+    }
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Tez Law P.C.",
+    "url": "https://tezlawfirm.com"
+  },
+  "datePublished": "[TODAY_DATE]",
+  "dateModified": "[TODAY_DATE]"
+}
+</script>
+
+Replace [POST TITLE] with actual title and [TODAY_DATE] with ${new Date().toISOString().split('T')[0]}.
+
+8. TAGS: 5-7 highly specific tags including location + practice area keywords
+
+Return ONLY this JSON (no markdown, no backticks, no other text):
+{
+  "title": "SEO title here",
+  "metaDescription": "150-160 char meta description here",
+  "content": "full HTML content here",
+  "category": "Immigration|Personal Injury|Business Law|Trademarks|Estate Planning",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "focusKeyword": "main SEO keyword here"
 }`;
 
   const raw = await askClaude(prompt, useSearch);
 
-  // Parse JSON from Claude's response
   try {
     const cleaned = raw.replace(/```json|```/g, "").trim();
     const start = cleaned.indexOf("{");
@@ -196,6 +274,7 @@ Return your response in this exact JSON format (no markdown, no backticks):
     return JSON.parse(cleaned.substring(start, end + 1));
   } catch (e) {
     console.error("Failed to parse Claude response:", e.message);
+    console.error("Raw response:", raw.substring(0, 500));
     return null;
   }
 }
