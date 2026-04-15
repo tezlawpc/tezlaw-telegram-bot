@@ -63,7 +63,7 @@ function saveState(state) {
 async function askClaude(prompt, useWebSearch = false) {
   const body = {
     model: "claude-sonnet-4-20250514",
-    max_tokens: 2000,
+    max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],
   };
   if (useWebSearch) {
@@ -219,14 +219,14 @@ STRICT REQUIREMENTS:
 
 2. META DESCRIPTION (150-160 characters, includes keyword + clear CTA)
 
-3. CONTENT STRUCTURE (1,500-2,000 words total):
+3. CONTENT STRUCTURE (1,000-1,400 words total):
    - Opening paragraph: hook + who this affects + what they should do
    - H2: Background/What This Means
    - H2: How This Affects [Specific Audience]
    - H2: What You Should Do Now (actionable steps)
    - H2: Why Choose Tez Law P.C.
    - H2: Frequently Asked Questions
-     * Include 5 FAQ items as <div class="faq-item"><h3>Question?</h3><p>Answer</p></div>
+     * Include 3 FAQ items as <div class="faq-item"><h3>Question?</h3><p>Answer</p></div>
    - Closing CTA paragraph
 
 4. INTERNAL LINKS - include these exact links naturally in the content:
@@ -321,7 +321,7 @@ RULES:
 - Return ONLY the rewritten HTML content, nothing else
 
 ORIGINAL CONTENT:
-${postData.content.substring(0, 4000)}`;
+${postData.content.substring(0, 3000)}`;
 
   try {
     const humanized = await askClaude(humanizePrompt, false);
