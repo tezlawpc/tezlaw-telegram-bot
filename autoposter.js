@@ -303,31 +303,26 @@ Return ONLY this JSON (no markdown, no backticks, no other text):
     return null;
   }
 
-  // Wait then humanize the content
+  // Humanize only the intro paragraph to set JJ's tone
+  // (avoid truncation by not rewriting the full post)
   await new Promise(r => setTimeout(r, 5000));
   console.log("✍️ Humanizing post in JJ Zhang's voice...");
 
-  const humanizePrompt = `${JJ_VOICE}
-
-Rewrite the HTML content of this blog post in JJ Zhang's conversational voice.
-
-RULES:
-- Keep all HTML tags, internal links, FAQ structure, author box, disclaimer, and JSON-LD schema EXACTLY as they are
-- Only rewrite the visible text content
-- Make it sound like JJ Zhang wrote it personally
-- Use "Protect your rights — we handle the rest." naturally once, near the end CTA
-- Remove any AI-sounding phrases
-- Keep the same word count (do not shorten significantly)
-- Return ONLY the rewritten HTML content, nothing else
-
-ORIGINAL CONTENT:
-${postData.content.substring(0, 3000)}`;
-
   try {
-    const humanized = await askClaude(humanizePrompt, false);
-    if (humanized && humanized.length > 500) {
-      postData.content = humanized;
-      console.log("✅ Post humanized successfully");
+    // Extract just the first 2 paragraphs to humanize
+    const firstParaMatch = postData.content.match(/(<p>.*?<\/p>\s*<p>.*?<\/p>)/s);
+    if (firstParaMatch) {
+      const humanizePrompt = `${JJ_VOICE}
+
+Rewrite ONLY these two opening paragraphs in JJ Zhang's voice. Return ONLY the rewritten HTML paragraphs, nothing else:
+
+${firstParaMatch[1]}`;
+
+      const humanizedIntro = await askClaude(humanizePrompt, false);
+      if (humanizedIntro && humanizedIntro.includes("<p>")) {
+        postData.content = postData.content.replace(firstParaMatch[1], humanizedIntro.trim());
+        console.log("✅ Post intro humanized successfully");
+      }
     }
   } catch (e) {
     console.log("Humanization failed, using original:", e.message);
