@@ -178,37 +178,43 @@ Return your response in this exact JSON format (no markdown, no backticks):
 async function checkImmigrationNews(state) {
   console.log("📰 Checking immigration news...");
 
-  const prompt = `You are a news extraction tool. Search for US immigration law news from the past 48 hours.
+  // Step 1: Get raw news via web search
+  const searchPrompt = `Search for the latest US immigration law news from today and yesterday (past 48 hours). 
+Find news about: USCIS policy changes, executive orders, visa rules, H-1B, EB-5, deportation, asylum, immigration courts.
+Summarize what you find as a plain list of headlines and brief summaries.`;
 
-CRITICAL INSTRUCTIONS - FOLLOW EXACTLY:
-1. Search for recent immigration news now
-2. Your response must ONLY contain one of these two formats - nothing else:
+  const rawNews = await askClaude(searchPrompt, true);
+  console.log("Raw news:", rawNews.substring(0, 300));
 
-FORMAT A (if news found):
-NEWS_ITEM_1: [exact headline] | [one sentence summary]
-NEWS_ITEM_2: [exact headline] | [one sentence summary]
+  // Step 2: Extract structured items from the raw news
+  const extractPrompt = `Below is raw immigration news text. Extract up to 3 significant news items from the PAST 48 HOURS ONLY.
 
-FORMAT B (if no news):
-NO_NEW_NEWS
+Raw news text:
+${rawNews.substring(0, 2000)}
 
-DO NOT explain your search process. DO NOT say "let me search". DO NOT add any other text.
-ONLY output NEWS_ITEM lines or NO_NEW_NEWS. Nothing else.
+Respond ONLY in this exact format (no other text):
+NEWS_ITEM_1: [headline] | [one sentence summary]
+NEWS_ITEM_2: [headline] | [one sentence summary]
 
-Search for: USCIS policy changes, executive orders, visa rule changes, H-1B updates, EB-5 news, deportation policy, immigration court decisions from the past 48 hours.`;
+If there are no genuinely new items from the past 48 hours, respond with only:
+NO_NEW_NEWS`;
 
-  const newsCheck = await askClaude(prompt, true);
-  console.log("News check result:", newsCheck.substring(0, 200));
+  // Wait 3 seconds to avoid Anthropic API rate limit
+  await new Promise(r => setTimeout(r, 3000));
+  
+  const structured = await askClaude(extractPrompt, false);
+  console.log("Structured result:", structured.substring(0, 300));
 
-  if (newsCheck.includes("NO_NEW_NEWS")) {
+  if (structured.includes("NO_NEW_NEWS") || !structured.includes("NEWS_ITEM_")) {
     console.log("No new immigration news today.");
     return 0;
   }
 
   // Extract news items
-  const newsItems = newsCheck.match(/NEWS_ITEM_\d+: (.+)/g) || [];
+  const newsItems = structured.match(/NEWS_ITEM_\d+: (.+)/g) || [];
   let postsPublished = 0;
 
-  for (const item of newsItems.slice(0, 2)) { // max 2 posts per day
+  for (const item of newsItems.slice(0, 1)) { // max 1 post per day to avoid rate limits
     const headline = item.replace(/NEWS_ITEM_\d+: /, "").split(" | ")[0];
 
     // Check if we already posted about this
