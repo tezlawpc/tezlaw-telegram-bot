@@ -220,15 +220,24 @@ If there is truly nothing noteworthy, respond:
     return 0;
   }
 
-  // Wait before generating post
-  await new Promise(r => setTimeout(r, 3000));
+  // Wait before generating post — avoid Anthropic rate limit
+  await new Promise(r => setTimeout(r, 10000));
 
-  const post = await generatePost({
-    topic: headline,
-    practiceArea: "Immigration Law",
-    context: summary,
-    useSearch: false,
-  });
+  let post = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      post = await generatePost({
+        topic: headline,
+        practiceArea: "Immigration Law",
+        context: summary,
+        useSearch: false,
+      });
+      if (post) break;
+    } catch (e) {
+      console.log(`Post generation attempt ${attempt} failed:`, e.message);
+      if (attempt < 3) await new Promise(r => setTimeout(r, 15000));
+    }
+  }
 
   if (!post) return 0;
 
