@@ -178,78 +178,76 @@ Return your response in this exact JSON format (no markdown, no backticks):
 async function checkImmigrationNews(state) {
   console.log("📰 Checking immigration news...");
 
-  // Step 1: Get raw news via web search
-  const searchPrompt = `Search for the latest US immigration law news from today and yesterday (past 48 hours). 
-Find news about: USCIS policy changes, executive orders, visa rules, H-1B, EB-5, deportation, asylum, immigration courts.
-Summarize what you find as a plain list of headlines and brief summaries.`;
+  // Single call: search AND generate post topic in one step
+  const prompt = `Search for the most significant US immigration law news or development from the past 7 days.
+Pick the single most newsworthy item relevant to people interested in US immigration (visas, green cards, deportation, work permits, asylum, etc.).
 
-  const rawNews = await askClaude(searchPrompt, true);
-  console.log("Raw news:", rawNews.substring(0, 300));
+Then respond in this exact JSON format only (no other text):
+{
+  "hasNews": true,
+  "headline": "brief headline here",
+  "summary": "one sentence summary here"
+}
 
-  // Step 2: Extract structured items from the raw news
-  const extractPrompt = `Below is raw immigration news text. Extract up to 3 significant news items from the PAST 48 HOURS ONLY.
+If there is truly nothing noteworthy, respond:
+{"hasNews": false}`;
 
-Raw news text:
-${rawNews.substring(0, 2000)}
+  const result = await askClaude(prompt, true);
+  console.log("News result:", result.substring(0, 200));
 
-Respond ONLY in this exact format (no other text):
-NEWS_ITEM_1: [headline] | [one sentence summary]
-NEWS_ITEM_2: [headline] | [one sentence summary]
+  let newsData;
+  try {
+    const cleaned = result.replace(/```json|```/g, "").trim();
+    const jsonStart = cleaned.indexOf("{");
+    const jsonEnd = cleaned.lastIndexOf("}");
+    newsData = JSON.parse(cleaned.substring(jsonStart, jsonEnd + 1));
+  } catch (e) {
+    console.log("Failed to parse news result:", e.message);
+    return 0;
+  }
 
-If there are no genuinely new items from the past 48 hours, respond with only:
-NO_NEW_NEWS`;
-
-  // Wait 3 seconds to avoid Anthropic API rate limit
-  await new Promise(r => setTimeout(r, 3000));
-  
-  const structured = await askClaude(extractPrompt, false);
-  console.log("Structured result:", structured.substring(0, 300));
-
-  if (structured.includes("NO_NEW_NEWS") || !structured.includes("NEWS_ITEM_")) {
+  if (!newsData.hasNews) {
     console.log("No new immigration news today.");
     return 0;
   }
 
-  // Extract news items
-  const newsItems = structured.match(/NEWS_ITEM_\d+: (.+)/g) || [];
-  let postsPublished = 0;
+  const headline = newsData.headline;
+  const summary = newsData.summary;
 
-  for (const item of newsItems.slice(0, 1)) { // max 1 post per day to avoid rate limits
-    const headline = item.replace(/NEWS_ITEM_\d+: /, "").split(" | ")[0];
-
-    // Check if we already posted about this
-    if (state.publishedTitles.some(t => t.toLowerCase().includes(headline.toLowerCase().substring(0, 20)))) {
-      console.log("Already posted about:", headline);
-      continue;
-    }
-
-    const post = await generatePost({
-      topic: headline,
-      practiceArea: "Immigration Law",
-      context: item,
-      useSearch: true,
-    });
-
-    if (!post) continue;
-
-    try {
-      const published = await publishToWordPress(post);
-      state.publishedTitles.push(post.title);
-      postsPublished++;
-      console.log("✅ Published immigration post:", post.title);
-      await notifyTeam(
-        `📢 *New Auto-Post Published!*\n\n` +
-        `📌 *${post.title}*\n` +
-        `🏷️ Category: ${post.category}\n` +
-        `🔗 ${published.link}\n\n` +
-        `_Review and edit if needed._`
-      );
-    } catch (e) {
-      console.error("Failed to publish:", e.message);
-    }
+  // Check if we already posted about this
+  if (state.publishedTitles.some(t => t.toLowerCase().includes(headline.toLowerCase().substring(0, 20)))) {
+    console.log("Already posted about:", headline);
+    return 0;
   }
 
-  return postsPublished;
+  // Wait before generating post
+  await new Promise(r => setTimeout(r, 3000));
+
+  const post = await generatePost({
+    topic: headline,
+    practiceArea: "Immigration Law",
+    context: summary,
+    useSearch: false,
+  });
+
+  if (!post) return 0;
+
+  try {
+    const published = await publishToWordPress(post);
+    state.publishedTitles.push(post.title);
+    console.log("✅ Published immigration post:", post.title);
+    await notifyTeam(
+      `📢 *New Auto-Post Published!*\n\n` +
+      `📌 *${post.title}*\n` +
+      `🏷️ Category: ${post.category}\n` +
+      `🔗 ${published.link}\n\n` +
+      `_Review and edit if needed._`
+    );
+    return 1;
+  } catch (e) {
+    console.error("Failed to publish:", e.message);
+    return 0;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
