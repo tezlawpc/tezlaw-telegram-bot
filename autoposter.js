@@ -94,14 +94,36 @@ async function publishToWordPress({ title, content, category, tags }) {
   }
 
   try {
-    const postRes = await axios.post(
+    // Convert tag names to tag IDs
+  let tagIds = [];
+  try {
+    for (const tagName of (tags || [])) {
+      const tagRes = await axios.get(`${WP_URL}/wp-json/wp/v2/tags?search=${encodeURIComponent(tagName)}`, {
+        headers: { Authorization: `Basic ${auth}` }
+      });
+      if (tagRes.data.length > 0) {
+        tagIds.push(tagRes.data[0].id);
+      } else {
+        const newTag = await axios.post(`${WP_URL}/wp-json/wp/v2/tags`,
+          { name: tagName },
+          { headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" } }
+        );
+        tagIds.push(newTag.data.id);
+      }
+    }
+  } catch (e) {
+    console.log("Tag lookup failed, posting without tags:", e.message);
+    tagIds = [];
+  }
+
+  const postRes = await axios.post(
       `${WP_URL}/wp-json/wp/v2/posts`,
       {
         title,
         content,
         status: "publish",
         categories: [categoryId],
-        tags: tags || [],
+        tags: tagIds,
       },
       {
         headers: {
