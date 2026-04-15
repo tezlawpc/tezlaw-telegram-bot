@@ -71,6 +71,7 @@ async function askClaude(prompt, useWebSearch = false) {
 // ── WordPress publish ─────────────────────────────────────────
 async function publishToWordPress({ title, content, category, tags }) {
   const auth = Buffer.from(`${WP_USER}:${WP_APP_PASSWORD}`).toString("base64");
+  console.log("Publishing to WordPress:", title?.substring(0, 50));
 
   // Get or create category ID
   let categoryId = 1; // default: Uncategorized
@@ -92,23 +93,28 @@ async function publishToWordPress({ title, content, category, tags }) {
     console.log("Category lookup failed, using default:", e.message);
   }
 
-  const postRes = await axios.post(
-    `${WP_URL}/wp-json/wp/v2/posts`,
-    {
-      title,
-      content,
-      status: "publish",
-      categories: [categoryId],
-      tags: tags || [],
-    },
-    {
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/json",
+  try {
+    const postRes = await axios.post(
+      `${WP_URL}/wp-json/wp/v2/posts`,
+      {
+        title,
+        content,
+        status: "publish",
+        categories: [categoryId],
+        tags: tags || [],
       },
-    }
-  );
-  return postRes.data;
+      {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    return postRes.data;
+  } catch (e) {
+    console.error("WordPress post error:", e.response?.status, JSON.stringify(e.response?.data)?.substring(0, 300));
+    throw e;
+  }
 }
 
 // ── Telegram notification ─────────────────────────────────────
@@ -242,6 +248,9 @@ If there is truly nothing noteworthy, respond:
   if (!post) return 0;
 
   try {
+    console.log("Attempting to publish:", post?.title);
+    console.log("Post category:", post?.category);
+    console.log("Content length:", post?.content?.length);
     const published = await publishToWordPress(post);
     state.publishedTitles.push(post.title);
     console.log("✅ Published immigration post:", post.title);
