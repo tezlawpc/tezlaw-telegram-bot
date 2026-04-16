@@ -507,17 +507,9 @@ If there is truly nothing noteworthy, respond:
     console.log("Attempting to publish:", post?.title);
     console.log("Post category:", post?.category);
     console.log("Content length:", post?.content?.length);
-    const published = await publishToWordPress(post);
     state.publishedTitles.push(post.title);
-    console.log("✅ Published immigration post:", post.title);
-    await notifyTeam(
-      `📢 *New Auto-Post Published!*\n\n` +
-      `📌 *${post.title}*\n` +
-      `🏷️ Category: ${post.category}\n` +
-      `🔗 ${published.link}\n\n` +
-      `_Review and edit if needed._`
-    );
-    return 1;
+    const count = await publishAllLanguages(post, "📢 *New Immigration Post Published!*");
+    return count > 0 ? 1 : 0;
   } catch (e) {
     console.error("Failed to publish:", e.message);
     return 0;
@@ -563,7 +555,7 @@ async function checkWeather(state) {
 
     if (!post) return 0;
 
-    const published = await publishToWordPress(post);
+    await publishAllLanguages(post, "🌧️ *Weather Post Published!*");
     state.lastWeatherCheck = now;
     state.publishedTitles.push(post.title);
     console.log("✅ Published weather post:", post.title);
@@ -618,7 +610,7 @@ async function checkHolidays(state) {
 
       if (!post) continue;
 
-      const published = await publishToWordPress(post);
+      await publishAllLanguages(post, "🎉 *Holiday Post Published!*");
       state.lastHolidayPost = holidayKey;
       state.publishedTitles.push(post.title);
       console.log("✅ Published holiday post:", post.title);
@@ -681,7 +673,7 @@ async function checkEvergreen(state) {
 
     const post = await generatePost({ topic, practiceArea: "Personal Injury", useSearch: false });
     if (post) {
-      const published = await publishToWordPress(post);
+      await publishAllLanguages(post, "📝 *PI Post Published!*");
       state.weeklyEvergreen.pi = now.toDateString();
       state.publishedTitles.push(post.title);
       postsPublished++;
@@ -696,7 +688,7 @@ async function checkEvergreen(state) {
       const topic = EVERGREEN_TOPICS.business[Math.floor(Math.random() * EVERGREEN_TOPICS.business.length)];
       const post = await generatePost({ topic, practiceArea: "Business Law", useSearch: false });
       if (post) {
-        const published = await publishToWordPress(post);
+        await publishAllLanguages(post, "📝 *Business Law Post Published!*");
         state.weeklyEvergreen.business = now.toDateString();
         state.publishedTitles.push(post.title);
         postsPublished++;
@@ -712,7 +704,7 @@ async function checkEvergreen(state) {
       const topic = EVERGREEN_TOPICS.trademark[Math.floor(Math.random() * EVERGREEN_TOPICS.trademark.length)];
       const post = await generatePost({ topic, practiceArea: "Trademarks", useSearch: false });
       if (post) {
-        const published = await publishToWordPress(post);
+        await publishAllLanguages(post, "📝 *Trademark Post Published!*");
         state.weeklyEvergreen.trademark = now.toDateString();
         state.publishedTitles.push(post.title);
         postsPublished++;
@@ -728,7 +720,7 @@ async function checkEvergreen(state) {
       const topic = EVERGREEN_TOPICS.estate[Math.floor(Math.random() * EVERGREEN_TOPICS.estate.length)];
       const post = await generatePost({ topic, practiceArea: "Estate Planning", useSearch: false });
       if (post) {
-        const published = await publishToWordPress(post);
+        await publishAllLanguages(post, "📝 *Estate Planning Post Published!*");
         state.weeklyEvergreen.estate = now.toDateString();
         state.publishedTitles.push(post.title);
         postsPublished++;
