@@ -4,23 +4,6 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// ── CORS — allow tezlawfirm.com to call this API ──────────────
-app.use((req, res, next) => {
-  const allowedOrigins = [
-    "https://tezlawfirm.com",
-    "https://www.tezlawfirm.com",
-    "http://localhost:3000"
-  ];
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
-  next();
-});
-
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const PORT = process.env.PORT || 3000;
@@ -39,7 +22,7 @@ Your name is Zara. You are a warm, friendly legal assistant for Tez Law P.C. in 
 THE TEAM
 ============================
 
-JJ ZHANG (章) — Managing Attorney
+JJ ZHANG — Managing Attorney
 - Phone: 626-678-8677
 - Email: jj@tezlawfirm.com
 
@@ -428,24 +411,122 @@ async function checkAndNotifyLead(userId, userMessage, botReply, platform) {
   }
 }
 
+// ── File/Attachment helpers ───────────────────────────────
+async function downloadTelegramFile(fileId) {
+  const resp = await axios.get(`${TELEGRAM_API}/getFile`, { params: { file_id: fileId } });
+  const filePath = resp.data.result.file_path;
+  const url = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
+  const fileResp = await axios.get(url, { responseType: "arraybuffer" });
+  const ext = filePath.split(".").pop().toLowerCase();
+  return { buffer: Buffer.from(fileResp.data), extension: ext };
+}
+
+function getImageMediaType(ext) {
+  const map = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp" };
+  return map[ext] || "image/jpeg";
+}
+
+async function askClaudeWithImage(chatId, imageBuffer, mediaType, caption) {
+  const base64 = imageBuffer.toString("base64");
+  const userPrompt = caption || "Please analyze this image and describe what you see. If it's a legal document, explain what it is and what it means.";
+  const response = await axios.post(
+    "https://api.anthropic.com/v1/messages",
+    {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+          { type: "text", text: userPrompt }
+        ]
+      }]
+    },
+    { headers: { "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" } }
+  );
+  const reply = response.data.content.filter(b => b.type === "text").map(b => b.text).join("") || "I had trouble analyzing that image. Please try again or contact us at 626-678-8677.";
+  if (!conversations[chatId]) conversations[chatId] = [];
+  conversations[chatId].push({ role: "user", content: `[Image sent] ${caption || ""}` });
+  conversations[chatId].push({ role: "assistant", content: reply });
+  return reply;
+}
+
+async function askClaudeWithPDF(chatId, pdfBuffer, caption) {
+  const base64 = pdfBuffer.toString("base64");
+  const userPrompt = caption || "Please analyze this PDF document. If it's a legal document, explain what it is, what it means, and what action may be needed.";
+  const response = await axios.post(
+    "https://api.anthropic.com/v1/messages",
+    {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+          { type: "text", text: userPrompt }
+        ]
+      }]
+    },
+    { headers: { "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" } }
+  );
+  const reply = response.data.content.filter(b => b.type === "text").map(b => b.text).join("") || "I had trouble reading that PDF. Please try again or contact us at 626-678-8677.";
+  if (!conversations[chatId]) conversations[chatId] = [];
+  conversations[chatId].push({ role: "user", content: `[PDF sent] ${caption || ""}` });
+  conversations[chatId].push({ role: "assistant", content: reply });
+  return reply;
+}
+
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
   console.log("Webhook received:", JSON.stringify(req.body).substring(0, 200));
 
   const update = req.body;
-  if (!update.message || !update.message.text) return;
+  if (!update.message) return;
 
-  const chatId = update.message.chat.id;
-  const userText = update.message.text;
-  const firstName = update.message.from?.first_name || "there";
-
-  console.log("Message from:", firstName, "text:", userText);
+  const message = update.message;
+  const chatId = message.chat.id;
+  const caption = message.caption || "";
+  const firstName = message.from?.first_name || "there";
 
   try {
+    // ── PHOTO ──────────────────────────────────────────────
+    if (message.photo && message.photo.length > 0) {
+      await axios.post(`${TELEGRAM_API}/sendChatAction`, { chat_id: chatId, action: "typing" });
+      const bestPhoto = message.photo[message.photo.length - 1];
+      const { buffer, extension } = await downloadTelegramFile(bestPhoto.file_id);
+      const reply = await askClaudeWithImage(chatId, buffer, getImageMediaType(extension), caption);
+      await sendMessage(chatId, reply);
+      return;
+    }
+
+    // ── DOCUMENT ───────────────────────────────────────────
+    if (message.document) {
+      await axios.post(`${TELEGRAM_API}/sendChatAction`, { chat_id: chatId, action: "typing" });
+      const doc = message.document;
+      const { buffer, extension } = await downloadTelegramFile(doc.file_id);
+      if (doc.mime_type === "application/pdf") {
+        const reply = await askClaudeWithPDF(chatId, buffer, caption);
+        await sendMessage(chatId, reply);
+      } else if (["image/jpeg","image/png","image/gif","image/webp"].includes(doc.mime_type)) {
+        const reply = await askClaudeWithImage(chatId, buffer, doc.mime_type, caption);
+        await sendMessage(chatId, reply);
+      } else {
+        await sendMessage(chatId, "I can read images (JPEG, PNG, WebP) and PDF documents. Please resend in one of those formats, or describe your question in text.");
+      }
+      return;
+    }
+
+    // ── TEXT ───────────────────────────────────────────────
+    if (!message.text) return;
+    const userText = message.text;
+    console.log("Message from:", firstName, "text:", userText);
+
     if (userText === "/start") {
       conversations[chatId] = [];
       await sendMessage(chatId,
-        `Hi ${firstName}! Welcome to Tez Law P.C.\n\nI can help you with:\n\nImmigration\nCar Accidents & Personal Injury\nBusiness Litigation\nPatents & Trademarks\nEstate Planning\n\nJust tell me what's going on and I'll point you in the right direction.\n\nPara espanol, escribame en espanol.\n如需中文服务，请用中文留言。`
+        `Hi ${firstName}! Welcome to Tez Law P.C.\n\nI can help you with:\n\nImmigration\nCar Accidents & Personal Injury\nBusiness Litigation\nPatents & Trademarks\nEstate Planning\n\nYou can also send me photos or PDFs of legal documents and I'll explain them.\n\nJust tell me what's going on!\n\nPara espanol, escribame en espanol.\n如需中文服务，请用中文留言。`
       );
       return;
     }
@@ -483,29 +564,8 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// ── Web Chat Endpoint ─────────────────────────────────────────
-app.post("/chat", async (req, res) => {
-  try {
-    const { message, sessionId } = req.body;
-    if (!message || !sessionId) {
-      return res.status(400).json({ error: "Missing message or sessionId" });
-    }
-    const reply = await askClaude(sessionId, message);
-    res.json({ reply });
-  } catch (err) {
-    console.error("Web chat error:", err.message);
-    res.status(500).json({ reply: "Sorry, I'm having a technical issue. Please call us at 626-678-8677 or email jj@tezlawfirm.com." });
-  }
-});
-
 app.get("/", (req, res) => res.send("Tez Law P.C. Bot is running."));
-
-// ── Auto-Poster ───────────────────────────────────────────────
-const { scheduleDaily } = require("./autoposter");
 
 app.listen(PORT, () => {
   console.log(`Bot server running on port ${PORT}`);
-  // Start the daily auto-poster scheduler
-  scheduleDaily();
-  console.log("📅 WordPress auto-poster scheduler started.");
 });
