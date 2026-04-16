@@ -815,7 +815,7 @@ async function checkEvergreen(state) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  MAIN SCHEDULER — runs daily at 8 AM
+//  MAIN SCHEDULER — runs daily at 7:50 AM
 // ─────────────────────────────────────────────────────────────
 async function runDailyScheduler() {
   console.log("\n🚀 TEZ LAW AUTO-POSTER running:", new Date().toLocaleString());
@@ -851,11 +851,11 @@ async function runDailyScheduler() {
 function scheduleDaily() {
   const now = new Date();
   const next8am = new Date();
-  next8am.setHours(8, 0, 0, 0);
+  next8am.setHours(7, 50, 0, 0);
   if (next8am <= now) next8am.setDate(next8am.getDate() + 1);
 
   const msUntil8am = next8am - now;
-  console.log(`⏰ Next auto-post check in ${Math.round(msUntil8am / 1000 / 60)} minutes (8 AM Pacific)`);
+  console.log(`⏰ Next auto-post check in ${Math.round(msUntil8am / 1000 / 60)} minutes (7:50 AM Pacific)`);
 
   setTimeout(async () => {
     await runDailyScheduler();
