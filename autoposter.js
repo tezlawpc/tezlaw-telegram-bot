@@ -36,6 +36,27 @@ JJ's communication style:
 - Speaks English, Mandarin Chinese, and Shanghainese — naturally multilingual perspective
 `;
 
+// ── Static post footer (author box + disclaimer + schema) ───
+function getStaticFooter(title) {
+  const today = new Date().toISOString().split('T')[0];
+  return `
+<style>.tez-ab{display:flex;flex-direction:column;gap:16px;padding:28px 24px;margin:40px 0 28px;background:#f9fafb;border:1px solid #e2e6ea;border-left:5px solid #1B3A5C;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;line-height:1.6}.tez-ab *{box-sizing:border-box}.tez-ab-label{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1B3A5C;background:#e8eef4;padding:2px 10px;border-radius:3px}.tez-ab-name{font-size:1.25rem;font-weight:800;color:#1B3A5C;margin:4px 0 2px}.tez-ab-cn{font-size:.9rem;font-weight:400;color:#666;margin-left:6px}.tez-ab-title{font-size:.9rem;color:#4a5568;margin-bottom:8px}.tez-ab-creds{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:#555;margin-bottom:10px}.tez-ab-bio{font-size:.92rem;color:#333;margin:0 0 12px;line-height:1.7}.tez-ab-bio strong{color:#1B3A5C}.tez-ab-langs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.tez-lang{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #d1d9e0;border-radius:20px;padding:3px 12px;font-size:.78rem;font-weight:600;color:#1B3A5C}.tez-dot{width:8px;height:8px;border-radius:50%;display:inline-block}.tez-dot-en{background:#1B3A5C}.tez-dot-zh{background:#DE2910}.tez-dot-sh{background:#D4A017}.tez-ab-tagline{font-size:.87rem;font-style:italic;color:#1B3A5C;font-weight:600;padding:7px 14px;background:rgba(27,58,92,.06);border-radius:6px;display:inline-block;margin-bottom:14px}.tez-ab-ctas{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.tez-cta1{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:#1B3A5C;color:#fff!important;font-size:.9rem;font-weight:700;padding:11px 22px;border-radius:6px;text-decoration:none!important}.tez-cta1:hover{background:#0f2740}.tez-cta2{display:inline-flex;align-items:center;justify-content:center;gap:6px;color:#1B3A5C;font-size:.87rem;font-weight:600;padding:9px 18px;border:2px solid #1B3A5C;border-radius:6px;text-decoration:none!important}.tez-cta2:hover{background:#1B3A5C;color:#fff!important}.tez-ab-chat{font-size:.82rem;color:#4a5568;margin-bottom:8px}.tez-ab-chat a{color:#1B3A5C;font-weight:600;text-decoration:none}.tez-ab-areas{font-size:.78rem;color:#718096}@media(min-width:768px){.tez-ab{flex-direction:row;align-items:flex-start;text-align:left;gap:24px;padding:32px 28px}.tez-ab-ctas{flex-direction:row}.tez-cta1,.tez-cta2{width:auto}}</style>
+<aside class="tez-ab" aria-label="About the author"><div>
+<span class="tez-ab-label">About the Author</span>
+<div class="tez-ab-name">JJ Zhang, Esq.<span class="tez-ab-cn">章律師</span></div>
+<div class="tez-ab-title">Founding Attorney · Tez Law P.C.</div>
+<div class="tez-ab-creds"><span>⚖️ California Bar #326666</span><span>🏛️ 9th Circuit Court of Appeals</span><span>🏢 CA Real Estate Broker</span></div>
+<p class="tez-ab-bio"><strong>JJ Zhang is an immigrant who built his American dream from the ground up</strong> — and now fights to protect yours. Before law, JJ operated businesses and developed residential and commercial real estate. Today he brings that real-world hustle and first-hand immigration experience to every client he represents at Tez Law P.C.</p>
+<div class="tez-ab-langs"><span class="tez-lang"><span class="tez-dot tez-dot-en"></span>English</span><span class="tez-lang"><span class="tez-dot tez-dot-zh"></span>中文 Mandarin</span><span class="tez-lang"><span class="tez-dot tez-dot-sh"></span>上海话 Shanghainese</span></div>
+<div class="tez-ab-tagline">"Protect your rights — we handle the rest."</div>
+<div class="tez-ab-ctas"><a href="https://tezlawfirm.com/contact/" class="tez-cta1">📞 Free Consultation — 626-678-8677</a><a href="https://link.v1ce.co/tezintake" class="tez-cta2" target="_blank">📋 Start Intake Form →</a></div>
+<div class="tez-ab-chat">💬 Chat with Zara 24/7: <a href="https://wa.me/16266788677" target="_blank">WhatsApp</a> · <a href="https://m.me/tezlawfirm" target="_blank">Messenger</a> · <a href="https://t.me/TEZJJBot" target="_blank">Telegram</a> · <a href="https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=gh_03f700f08037" target="_blank">WeChat</a></div>
+<div class="tez-ab-areas"><strong>Immigration:</strong> Nationwide &nbsp;·&nbsp; <strong>PI &amp; Litigation:</strong> LA, Orange, San Bernardino &amp; Riverside Counties<br><em>我們也會說中文 · Puede hablar español</em></div>
+</div></aside>
+<p style="font-size:12px;color:#666;margin-top:20px;"><em>Disclaimer: This article is for informational purposes only and does not constitute legal advice. Contact Tez Law P.C. at 626-678-8677 or <a href="mailto:jj@tezlawfirm.com">jj@tezlawfirm.com</a> for advice specific to your situation. Results may vary.</em></p>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"${title.replace(/"/g, '\"')}","author":{"@type":"Person","name":"JJ Zhang","alternateName":"章律師","jobTitle":"Founding Attorney","knowsLanguage":["English","Chinese","Shanghainese"],"worksFor":{"@type":"LegalService","name":"Tez Law P.C.","url":"https://tezlawfirm.com"}},"publisher":{"@type":"Organization","name":"Tez Law P.C.","url":"https://tezlawfirm.com"},"datePublished":"${today}","dateModified":"${today}"}</script>`;
+}
+
 // ── State tracking (persisted to /var/data) ──────────────────
 const fs   = require("fs");
 const STATE_FILE = "/var/data/autoposter_state.json";
@@ -351,67 +372,9 @@ STRICT REQUIREMENTS:
    - PI topics: <a href="https://tezlawfirm.com/home/personal-injury/">personal injury attorney serving LA, Orange, San Bernardino, and Riverside Counties</a>
    - General: <a href="https://tezlawfirm.com/contact/">free consultation</a>
 
-5. AUTHOR BOX at end of content — use this EXACT HTML:
-<style>.tez-ab{display:flex;flex-direction:column;gap:16px;padding:28px 24px;margin:40px 0 28px;background:#f9fafb;border:1px solid #e2e6ea;border-left:5px solid #1B3A5C;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;line-height:1.6}.tez-ab-label{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1B3A5C;background:#e8eef4;padding:2px 10px;border-radius:3px}.tez-ab-name{font-size:1.25rem;font-weight:800;color:#1B3A5C;margin:4px 0 2px}.tez-ab-cn{font-size:.9rem;font-weight:400;color:#666;margin-left:6px}.tez-ab-title{font-size:.9rem;color:#4a5568;margin-bottom:8px}.tez-ab-creds{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:#555;margin-bottom:10px}.tez-ab-bio{font-size:.92rem;color:#333;margin:0 0 12px;line-height:1.7}.tez-ab-bio strong{color:#1B3A5C}.tez-ab-langs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.tez-lang{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #d1d9e0;border-radius:20px;padding:3px 12px;font-size:.78rem;font-weight:600;color:#1B3A5C}.tez-dot{width:8px;height:8px;border-radius:50%;display:inline-block}.tez-dot-en{background:#1B3A5C}.tez-dot-zh{background:#DE2910}.tez-dot-sh{background:#D4A017}.tez-ab-tagline{font-size:.87rem;font-style:italic;color:#1B3A5C;font-weight:600;padding:7px 14px;background:rgba(27,58,92,.06);border-radius:6px;display:inline-block;margin-bottom:14px}.tez-ab-ctas{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}.tez-cta1{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:#1B3A5C;color:#fff!important;font-size:.9rem;font-weight:700;padding:11px 22px;border-radius:6px;text-decoration:none!important}.tez-cta1:hover{background:#0f2740}.tez-cta2{display:inline-flex;align-items:center;justify-content:center;gap:6px;color:#1B3A5C;font-size:.87rem;font-weight:600;padding:9px 18px;border:2px solid #1B3A5C;border-radius:6px;text-decoration:none!important}.tez-cta2:hover{background:#1B3A5C;color:#fff!important}.tez-ab-chat{font-size:.82rem;color:#4a5568;margin-bottom:8px}.tez-ab-chat a{color:#1B3A5C;font-weight:600;text-decoration:none}.tez-ab-chat a:hover{text-decoration:underline}.tez-ab-areas{font-size:.78rem;color:#718096}</style>
-<aside class="tez-ab" aria-label="About the author">
-<div>
-<span class="tez-ab-label">About the Author</span>
-<div class="tez-ab-name">JJ Zhang, Esq.<span class="tez-ab-cn">章律师</span></div>
-<div class="tez-ab-title">Founding Attorney · Tez Law P.C.</div>
-<div class="tez-ab-creds">
-<span>⚖️ California Bar #326666</span>
-<span>🏛️ 9th Circuit Court of Appeals</span>
-<span>🏢 CA Real Estate Broker</span>
-</div>
-<p class="tez-ab-bio"><strong>JJ Zhang is an immigrant who built his American dream from the ground up</strong> — and now fights to protect yours. Before law, JJ operated businesses and developed residential and commercial real estate. Today he brings that real-world hustle and first-hand immigration experience to every client he represents at Tez Law P.C.</p>
-<div class="tez-ab-langs">
-<span class="tez-lang"><span class="tez-dot tez-dot-en"></span>English</span>
-<span class="tez-lang"><span class="tez-dot tez-dot-zh"></span>中文 Mandarin</span>
-<span class="tez-lang"><span class="tez-dot tez-dot-sh"></span>上海话 Shanghainese</span>
-</div>
-<div class="tez-ab-tagline">"Protect your rights — we handle the rest."</div>
-<div class="tez-ab-ctas">
-<a href="https://tezlawfirm.com/contact/" class="tez-cta1">📞 Free Consultation — 626-678-8677</a>
-<a href="https://link.v1ce.co/tezintake" class="tez-cta2" target="_blank">📋 Start Intake Form →</a>
-</div>
-<div class="tez-ab-chat">💬 Chat with Zara 24/7: <a href="https://wa.me/16266788677" target="_blank">WhatsApp</a> · <a href="https://m.me/tezlawfirm" target="_blank">Messenger</a> · <a href="https://t.me/TEZJJBot" target="_blank">Telegram</a> · <a href="https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=gh_03f700f08037" target="_blank">WeChat</a></div>
-<div class="tez-ab-areas"><strong>Immigration:</strong> Nationwide &nbsp;·&nbsp; <strong>PI &amp; Litigation:</strong> LA, Orange, San Bernardino &amp; Riverside Counties<br><em>我們也會說中文 · Puede hablar español</em></div>
-</div>
-</aside>
+5. AUTHOR BOX, DISCLAIMER, and JSON-LD SCHEMA will be appended automatically after your content. Do NOT include them.
 
-6. LEGAL DISCLAIMER at very end:
-<p style="font-size:12px;color:#666;margin-top:20px;"><em>Disclaimer: This article is for informational purposes only and does not constitute legal advice. Reading this article does not create an attorney-client relationship. Every case is different — contact Tez Law P.C. at 626-678-8677, email <a href="mailto:jj@tezlawfirm.com">jj@tezlawfirm.com</a>, or chat with Zara 24/7 on <a href="https://wa.me/16266788677" target="_blank">WhatsApp</a>, <a href="https://m.me/tezlawfirm" target="_blank">Messenger</a>, <a href="https://t.me/TEZJJBot" target="_blank">Telegram</a>, or <a href="https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=gh_03f700f08037" target="_blank">WeChat</a> for advice specific to your situation. Results may vary.</em></p>
-
-7. JSON-LD SCHEMA at very end (after disclaimer):
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "Article",
-  "headline": "[POST TITLE]",
-  "author": {
-    "@type": "Person",
-    "name": "JJ Zhang",
-    "jobTitle": "Managing Attorney",
-    "knowsLanguage": ["English", "Chinese", "Shanghainese"],
-    "worksFor": {
-      "@type": "LegalService",
-      "name": "Tez Law P.C.",
-      "url": "https://tezlawfirm.com"
-    }
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Tez Law P.C.",
-    "url": "https://tezlawfirm.com"
-  },
-  "datePublished": "[TODAY_DATE]",
-  "dateModified": "[TODAY_DATE]"
-}
-</script>
-
-Replace [POST TITLE] with actual title and [TODAY_DATE] with ${new Date().toISOString().split('T')[0]}.
-
-8. TAGS: 5-7 highly specific tags including location + practice area keywords
+6. TAGS: 5-7 highly specific tags including location + practice area keywords
 
 Return ONLY this JSON (no markdown, no backticks, no other text):
 {
@@ -436,6 +399,9 @@ Return ONLY this JSON (no markdown, no backticks, no other text):
     console.error("Raw response:", raw.substring(0, 500));
     return null;
   }
+
+  // Append static footer (author box + disclaimer + schema)
+  postData.content = (postData.content || "") + getStaticFooter(postData.title || "");
 
   // Humanize only the intro paragraph to set JJ's tone
   // (avoid truncation by not rewriting the full post)
