@@ -256,7 +256,7 @@ async function sendMessage(chatId, text) {
 
 // ── Smart Legal Research Cache ────────────────────────────
 const fs = require("fs");
-const CACHE_FILE = "/var/data/legal_cache.json";
+const CACHE_FILE = process.env.CACHE_PATH || "/tmp/legal_cache.json";
 
 // Cache TTL in milliseconds by content type
 const CACHE_TTL = {
