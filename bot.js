@@ -72,7 +72,7 @@ Never ask all three at once.
 
 URGENT SITUATIONS (ICE detention, NTA, court date, serious accident):
 Keep it short and direct. Give the phone number immediately.
-Example: "That's urgent — please call JJ Zhang right now at 626-678-8677."
+Example: "That's urgent — please call us right now at 626-678-8677."
 
 ROUTING TO TEAM:
 Keep it brief and warm.
@@ -202,7 +202,42 @@ AFTER SEARCHING:
 2. Cite the source (e.g. "According to INA § 240A...")
 3. Always add: "For how this applies to your specific situation, [attorney name] can give you proper legal advice — [contact info]"
 
-NEVER give a definitive legal conclusion. Always route to the attorney for specific advice.`;
+NEVER give a definitive legal conclusion. Always route to the attorney for specific advice.
+
+============================
+DISTRESS DETECTION — CRITICAL
+============================
+
+ALWAYS watch for signs that a client is in crisis or distress. These situations require IMMEDIATE escalation to the team.
+
+HIGH URGENCY — respond with emergency message AND notify team immediately:
+- ICE raid, detention, or arrest (self or family member)
+- "They took my husband/wife/child"
+- "I got a notice to appear" / NTA received
+- Car accident that just happened
+- Someone is injured right now
+- "I'm being deported" / removal order
+- Domestic violence situation
+- "I'm scared" / "I don't know what to do" / "please help me"
+- Court date is tomorrow or very soon
+- Criminal charges related to immigration
+
+MEDIUM URGENCY — respond with warm empathy + offer to connect with team:
+- Lost job due to immigration status
+- Visa expired or expiring soon
+- Denied benefits or application
+- Family separated
+- Emotional distress about case outcome
+
+FOR HIGH URGENCY situations, your response must:
+1. Acknowledge their distress warmly and immediately ("I hear you, this is serious and you're not alone")
+2. Give the firm's direct number: 626-678-8677
+3. Tell them NOT to sign anything without speaking to an attorney first
+4. Keep it SHORT and action-focused — they don't need a lecture, they need help
+
+Example high urgency response:
+"I hear you — this is serious and you're not alone. Please call us RIGHT NOW at 626-678-8677. Do NOT sign anything until you speak with an attorney. They are available to help you."`;
+
 
 
 
@@ -411,7 +446,53 @@ async function checkAndNotifyLead(userId, userMessage, botReply, platform) {
   }
 }
 
-// ── File/Attachment helpers ───────────────────────────────
+// ── Distress detection ────────────────────────────────────
+function detectDistress(message) {
+  const msg = message.toLowerCase();
+  const highUrgency = [
+    "ice", "detained", "arrested", "deportation", "deported", "removal",
+    "notice to appear", "nta", "they took", "raid", "emergency",
+    "accident just happened", "injured", "hospital", "bleeding",
+    "scared", "please help", "don't know what to do", "help me",
+    "court tomorrow", "hearing tomorrow", "sign anything",
+    "拘留", "被抓", "遣返", "紧急", "帮我", "害怕",
+    "detenido", "arrestado", "deportación", "ayúdame", "miedo"
+  ];
+  const mediumUrgency = [
+    "visa expired", "status expired", "out of status", "denied",
+    "lost my job", "fired", "separated", "family separated",
+    "don't know what to do", "worried", "desperate", "no options"
+  ];
+  if (highUrgency.some(kw => msg.includes(kw))) return "high";
+  if (mediumUrgency.some(kw => msg.includes(kw))) return "medium";
+  return "none";
+}
+
+// ── Notify team of distress ───────────────────────────────
+async function notifyTeamDistress(userId, userMessage, urgency, platform) {
+  try {
+    const TEAM_CHAT_ID = process.env.TEAM_TELEGRAM_CHAT_ID;
+    const TEAM_BOT_TOKEN = process.env.TELEGRAM_TOKEN;
+    if (!TEAM_CHAT_ID || !TEAM_BOT_TOKEN) return;
+
+    const emoji = urgency === "high" ? "🚨" : "⚠️";
+    const label = urgency === "high" ? "HIGH URGENCY" : "MEDIUM URGENCY";
+    const notification =
+      `${emoji} ${label} — ${platform}\n\n` +
+      `Client message: "${userMessage.substring(0, 200)}"\n\n` +
+      `Please follow up immediately!\n📞 626-678-8677`;
+
+    await axios.post(`https://api.telegram.org/bot${TEAM_BOT_TOKEN}/sendMessage`, {
+      chat_id: TEAM_CHAT_ID,
+      text: notification
+    });
+    console.log(`🚨 Distress notification sent (${urgency})`);
+  } catch (err) {
+    console.error("Distress notification error:", err.message);
+  }
+}
+
+
 async function downloadTelegramFile(fileId) {
   const resp = await axios.get(`${TELEGRAM_API}/getFile`, { params: { file_id: fileId } });
   const filePath = resp.data.result.file_path;
@@ -553,6 +634,12 @@ app.post("/webhook", async (req, res) => {
 
     const reply = await askClaude(chatId, userText);
     await sendMessage(chatId, reply);
+
+    // Check for distress and notify team
+    const urgency = detectDistress(userText);
+    if (urgency !== "none") {
+      await notifyTeamDistress(chatId, userText, urgency, "Telegram");
+    }
 
   } catch (err) {
     console.error("Error:", err.response?.data || err.message);
