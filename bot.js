@@ -653,6 +653,94 @@ app.post("/webhook", async (req, res) => {
 
 app.get("/", (req, res) => res.send("Tez Law P.C. Bot is running."));
 
+// ── Website Chat (/chat endpoint) ────────────────────────────
+// In-memory sessions for website chat visitors (keyed by sessionId)
+const webSessions = {};
+
+app.post("/chat", async (req, res) => {
+  // Allow requests from tezlawfirm.com and localhost
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+
+  const { message, sessionId } = req.body;
+  if (!message || !sessionId) {
+    return res.status(400).json({ error: "Missing message or sessionId" });
+  }
+
+  try {
+    if (!webSessions[sessionId]) webSessions[sessionId] = [];
+    webSessions[sessionId].push({ role: "user", content: message });
+    const recentHistory = webSessions[sessionId].slice(-20);
+
+    // Check cache for legal research
+    if (isLegalResearchQuestion(message)) {
+      const cached = getCachedAnswer(message);
+      if (cached) {
+        webSessions[sessionId].push({ role: "assistant", content: cached });
+        return res.json({ reply: cached });
+      }
+    }
+
+    const response = await axios.post(
+      "https://api.anthropic.com/v1/messages",
+      {
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: recentHistory,
+      },
+      {
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+      }
+    );
+
+    const reply = response.data.content
+      .filter(b => b.type === "text")
+      .map(b => b.text)
+      .join("") || "Let me connect you with our team. Call us at 626-678-8677 or email jj@tezlawfirm.com.";
+
+    webSessions[sessionId].push({ role: "assistant", content: reply });
+
+    if (isLegalResearchQuestion(message) && reply.length > 50) {
+      setCachedAnswer(message, reply);
+    }
+
+    // Lead detection for website visitors
+    await checkAndNotifyLead(sessionId, message, reply, "Website");
+
+    // Distress detection for website visitors
+    const urgency = detectDistress(message);
+    if (urgency !== "none") {
+      await notifyTeamDistress(sessionId, message, urgency, "Website");
+    }
+
+    res.json({ reply });
+  } catch (err) {
+    console.error("Web chat error:", err.response?.data || err.message);
+    res.status(500).json({ reply: "Having trouble connecting. Please call us at 626-678-8677 or email jj@tezlawfirm.com." });
+  }
+});
+
+// Handle CORS preflight
+app.options("/chat", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.sendStatus(200);
+});
+
 app.listen(PORT, () => {
   console.log(`Bot server running on port ${PORT}`);
+
+  // ── Keep-alive ping (prevents Render free tier from sleeping) ──
+  const RENDER_URL = process.env.RENDER_EXTERNAL_URL || "https://tezlaw-assistant.onrender.com";
+  setInterval(() => {
+    axios.get(RENDER_URL).catch(() => {});
+  }, 4 * 60 * 1000); // ping every 4 minutes
+  console.log("Keep-alive ping started →", RENDER_URL);
 });
