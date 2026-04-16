@@ -220,6 +220,62 @@ async function notifyTeam(message) {
   }
 }
 
+// ── Duplicate detection ──────────────────────────────────────
+function isDuplicateTitle(title, state) {
+  const normalize = t => t.toLowerCase().replace(/[^a-z0-9一-鿿]/g, " ").replace(/\s+/g, " ").trim();
+  const normalized = normalize(title);
+  const history = state.titleHistory || [];
+  return history.some(t => {
+    const n = normalize(t);
+    // Check if titles share 5+ consecutive words or are 80%+ similar
+    const words = normalized.split(" ").filter(w => w.length > 3);
+    const matches = words.filter(w => n.includes(w));
+    return matches.length >= 3 || (matches.length / words.length) >= 0.6;
+  });
+}
+
+async function checkWordPressDuplicate(title, auth) {
+  try {
+    const search = title.split(" ").slice(0, 5).join(" ");
+    const res = await axios.get(
+      `${WP_URL}/wp-json/wp/v2/posts?search=${encodeURIComponent(search)}&per_page=5&status=publish`,
+      { headers: { Authorization: `Basic ${auth}` } }
+    );
+    if (res.data.length > 0) {
+      const normalize = t => t.toLowerCase().replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+      const normalized = normalize(title);
+      for (const post of res.data) {
+        const existing = normalize(post.title.rendered);
+        const words = normalized.split(" ").filter(w => w.length > 3);
+        const matches = words.filter(w => existing.includes(w));
+        if (matches.length >= 4) {
+          console.log(`⚠️ WP duplicate found: "${post.title.rendered}"`);
+          return true;
+        }
+      }
+    }
+  } catch (e) {
+    console.log("WP duplicate check failed:", e.message);
+  }
+  return false;
+}
+
+function isEvergreenTopicUsedRecently(topicKey, state) {
+  const used = state.evergreenUsed || {};
+  if (!used[topicKey]) return false;
+  const daysSince = (Date.now() - used[topicKey]) / (1000 * 60 * 60 * 24);
+  if (daysSince < 28) {
+    console.log(`⚠️ Evergreen topic "${topicKey}" used ${Math.round(daysSince)} days ago — skipping`);
+    return true;
+  }
+  return false;
+}
+
+function markEvergreenTopicUsed(topicKey, state) {
+  if (!state.evergreenUsed) state.evergreenUsed = {};
+  state.evergreenUsed[topicKey] = Date.now();
+}
+
 // ── Translate post to Chinese or Spanish ─────────────────────
 async function translatePost(post, language) {
   const langConfig = {
@@ -244,17 +300,23 @@ async function translatePost(post, language) {
 
   console.log(`🌐 Translating to ${cfg.label}...`);
 
+  // Extract only the article body (before the static footer) for translation
+  // Static footer (author box, disclaimer, schema) gets re-appended after translation
+  const footerMarker = '<style>.tez-ab{';
+  const footerIdx = post.content.indexOf(footerMarker);
+  const articleBody = footerIdx > 0 ? post.content.substring(0, footerIdx) : post.content;
+
   const prompt = `${cfg.instruction}
 
 ORIGINAL TITLE: ${post.title}
 
-ORIGINAL CONTENT:
-${post.content.substring(0, 3500)}
+ORIGINAL ARTICLE BODY (HTML):
+${articleBody}
 
 Return ONLY a JSON object (no backticks):
 {
   "title": "translated title here",
-  "content": "translated HTML content here",
+  "content": "translated HTML article body here (no author box or schema needed)",
   "metaDescription": "translated meta description (150-160 chars)",
   "focusKeyword": "primary keyword in ${cfg.label}"
 }`;
@@ -267,9 +329,12 @@ Return ONLY a JSON object (no backticks):
     const end = cleaned.lastIndexOf("}");
     const translated = JSON.parse(cleaned.substring(start, end + 1));
 
+    // Append the static footer (in English — author box stays in English)
+    const fullContent = (translated.content || "") + getStaticFooter(translated.title || post.title);
+
     return {
       title: translated.title,
-      content: translated.content,
+      content: fullContent,
       category: cfg.categoryPrefix + post.category,
       tags: (post.tags || []).map(t => t + cfg.tagSuffix),
       metaDescription: translated.metaDescription,
@@ -284,6 +349,14 @@ Return ONLY a JSON object (no backticks):
 // ── Publish post in all 3 languages ──────────────────────────
 async function publishAllLanguages(post, notifyPrefix) {
   const results = [];
+
+  // Check for duplicates before publishing
+  const auth = Buffer.from(`${WP_USER}:${WP_APP_PASSWORD}`).toString("base64");
+  const wpDup = await checkWordPressDuplicate(post.title, auth);
+  if (wpDup) {
+    console.log("⚠️ Skipping — WordPress duplicate detected for:", post.title);
+    return 0;
+  }
 
   // Publish English first
   try {
@@ -332,6 +405,15 @@ ${links}`
   }
 
   return results.length;
+}
+
+// ── Record title to history after publishing ──────────────────
+function recordPublishedTitle(title, state) {
+  if (!state.titleHistory) state.titleHistory = [];
+  state.titleHistory.push(title);
+  if (!state.publishedTitles) state.publishedTitles = [];
+  state.publishedTitles.push(title);
+  saveState(state);
 }
 
 // ── Generate SEO-optimized blog post with Claude ─────────────
@@ -477,8 +559,8 @@ If there is truly nothing noteworthy, respond:
   const summary = newsData.summary;
 
   // Check if we already posted about this
-  if (state.publishedTitles.some(t => t.toLowerCase().includes(headline.toLowerCase().substring(0, 20)))) {
-    console.log("Already posted about:", headline);
+  if (isDuplicateTitle(headline, state)) {
+    console.log("⚠️ Duplicate detected, skipping:", headline);
     return 0;
   }
 
@@ -507,8 +589,8 @@ If there is truly nothing noteworthy, respond:
     console.log("Attempting to publish:", post?.title);
     console.log("Post category:", post?.category);
     console.log("Content length:", post?.content?.length);
-    state.publishedTitles.push(post.title);
     const count = await publishAllLanguages(post, "📢 *New Immigration Post Published!*");
+    if (count > 0) recordPublishedTitle(post.title, state);
     return count > 0 ? 1 : 0;
   } catch (e) {
     console.error("Failed to publish:", e.message);
