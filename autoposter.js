@@ -45,7 +45,7 @@ function getStaticFooter(title) {
 <span class="tez-ab-label">About the Author</span>
 <div class="tez-ab-name">JJ Zhang, Esq.<span class="tez-ab-cn">章律師</span></div>
 <div class="tez-ab-title">Founding Attorney · Tez Law P.C.</div>
-<div class="tez-ab-creds"><span>⚖️ California Bar #326666</span><span>🏛️ 9th Circuit Court of Appeals</span><span>🏢 CA Real Estate Broker</span></div>
+<div class="tez-ab-creds"><span>⚖️ California Bar #326666</span><span>🏛️ 9th Circuit Court of Appeals</span><span>🏢 CA RE Broker #01921248</span></div>
 <p class="tez-ab-bio"><strong>JJ Zhang is an immigrant who built his American dream from the ground up</strong> — and now fights to protect yours. Before law, JJ operated businesses and developed residential and commercial real estate. Today he brings that real-world hustle and first-hand immigration experience to every client he represents at Tez Law P.C.</p>
 <div class="tez-ab-langs"><span class="tez-lang"><span class="tez-dot tez-dot-en"></span>English</span><span class="tez-lang"><span class="tez-dot tez-dot-zh"></span>中文 Mandarin</span><span class="tez-lang"><span class="tez-dot tez-dot-sh"></span>上海话 Shanghainese</span></div>
 <div class="tez-ab-tagline">"Protect your rights — we handle the rest."</div>
