@@ -1,25 +1,16 @@
 // ============================================================
 //  intake.js — Conversational Intake Form for Zara
 //  Tez Law P.C.
-//
-//  HOW IT WORKS:
-//  1. Zara detects when a client is ready for intake
-//  2. Runs a short conversational flow to collect info
-//  3. Saves to PostgreSQL and emails the team
-//
-//  HOW TO USE IN EACH BOT:
-//  const { checkIntake, processIntake } = require("./intake");
-//  In your processMessage function, call checkIntake() first.
+//  Notifies team via Telegram group (no email needed)
 // ============================================================
 
-const axios  = require("axios");
-const db     = require("./db");
-const nodemailer = require("nodemailer");
+const axios = require("axios");
+const db    = require("./db");
 
-// ── In-memory intake state per user (platform:id → state) ──
+// ── In-memory intake state per user ──────────────────────────
 const intakeState = {};
 
-// ── Phrases that trigger intake flow ────────────────────────
+// ── Phrases that trigger intake flow ─────────────────────────
 const INTAKE_TRIGGERS = [
   "i need help", "i want to talk", "i want to speak", "schedule a consultation",
   "schedule an appointment", "book a consultation", "free consultation",
@@ -36,7 +27,7 @@ function shouldTriggerIntake(message) {
   return INTAKE_TRIGGERS.some(t => m.includes(t));
 }
 
-// ── Intake flow questions ─────────────────────────────────
+// ── Intake flow questions (3 steps) ──────────────────────────
 const INTAKE_STEPS = [
   {
     key: "name",
@@ -58,13 +49,12 @@ const INTAKE_STEPS = [
     key: "contact",
     question: {
       en: "Got it. What's the best phone number or email to reach you? The team will follow up within 1 business day.",
-      es: "Entendido. ¿Cuál es el mejor número de teléfono o correo electrónico para contactarte? El equipo se pondrá en contacto en 1 día hábil.",
+      es: "Entendido. ¿Cuál es el mejor número de teléfono o correo para contactarte? El equipo se pondrá en contacto en 1 día hábil.",
       zh: "明白了。请留下你的电话号码或电子邮件，我们的团队会在1个工作日内联系你。",
     }
   },
 ];
 
-// ── Detect client language from DB or default to 'en' ────────
 async function getClientLang(platform, platformId) {
   try {
     const client = await db.getOrCreateClient(platform, platformId, "en");
@@ -72,18 +62,17 @@ async function getClientLang(platform, platformId) {
   } catch { return "en"; }
 }
 
-// ── Main: check if intake should be triggered ─────────────
-// Returns: { triggered: true, message: "..." } or { triggered: false }
+// ── Main: check if intake should run ─────────────────────────
 async function checkIntake(platform, platformId, userMessage) {
   const stateKey = `${platform}:${platformId}`;
   const state = intakeState[stateKey];
 
-  // Already in intake flow — process the answer
+  // Already in flow — process the answer
   if (state && state.step < INTAKE_STEPS.length) {
     return { triggered: true, message: await processIntakeStep(platform, platformId, userMessage) };
   }
 
-  // Intake just completed — don't retrigger
+  // Flow completed — don't retrigger
   if (state && state.completed) return { triggered: false };
 
   // Check if message triggers intake
@@ -97,198 +86,131 @@ async function checkIntake(platform, platformId, userMessage) {
   return { triggered: false };
 }
 
-// ── Process each step of the intake flow ──────────────────
+// ── Process each step ─────────────────────────────────────────
 async function processIntakeStep(platform, platformId, userMessage) {
   const stateKey = `${platform}:${platformId}`;
-  const state = intakeState[stateKey];
-  const currentStep = INTAKE_STEPS[state.step];
-  const lang = state.lang;
+  const state    = intakeState[stateKey];
+  const step     = INTAKE_STEPS[state.step];
+  const lang     = state.lang;
 
   // Save the answer
-  state.data[currentStep.key] = userMessage.trim();
+  state.data[step.key] = userMessage.trim();
   state.step++;
 
   // More steps remaining
   if (state.step < INTAKE_STEPS.length) {
     let q = INTAKE_STEPS[state.step].question[lang] || INTAKE_STEPS[state.step].question.en;
-    // Replace {name} placeholder
     q = q.replace("{name}", state.data.name || "");
     return q;
   }
 
-  // All steps done — save and email
+  // All steps done — finish
   state.completed = true;
   await finishIntake(platform, platformId, state.data, lang);
 
   const confirmations = {
-    en: `✅ Got it! Here's a summary of what I've collected:\n\n👤 Name: ${state.data.name}\n📋 Issue: ${state.data.issue}\n📞 Contact: ${state.data.contact}\n\nI've sent this to the team and someone will reach out within 1 business day. In the meantime, feel free to keep asking me questions! 😊`,
-    es: `✅ ¡Listo! Aquí hay un resumen:\n\n👤 Nombre: ${state.data.name}\n📋 Problema: ${state.data.issue}\n📞 Contacto: ${state.data.contact}\n\nLe he enviado esto al equipo y alguien se comunicará en 1 día hábil. ¡Mientras tanto, siéntete libre de seguir haciendo preguntas! 😊`,
-    zh: `✅ 好的！以下是我收集到的信息摘要：\n\n👤 姓名：${state.data.name}\n📋 问题：${state.data.issue}\n📞 联系方式：${state.data.contact}\n\n我已将此信息发送给团队，有人将在1个工作日内与您联系。同时，欢迎继续向我提问！😊`,
+    en: `✅ Got it! Here's a summary:\n\n👤 Name: ${state.data.name}\n📋 Issue: ${state.data.issue}\n📞 Contact: ${state.data.contact}\n\nI've notified the team and someone will reach out within 1 business day. Feel free to keep asking questions in the meantime! 😊`,
+    es: `✅ ¡Listo! Aquí hay un resumen:\n\n👤 Nombre: ${state.data.name}\n📋 Problema: ${state.data.issue}\n📞 Contacto: ${state.data.contact}\n\nLe avisé al equipo y alguien se comunicará en 1 día hábil. ¡Puedes seguir haciendo preguntas! 😊`,
+    zh: `✅ 好的！以下是摘要：\n\n👤 姓名：${state.data.name}\n📋 问题：${state.data.issue}\n📞 联系方式：${state.data.contact}\n\n我已通知团队，将在1个工作日内联系您。欢迎继续提问！😊`,
   };
 
   return confirmations[lang] || confirmations.en;
 }
 
-// ── Save intake to DB and email team ─────────────────────
-async function finishIntake(platform, platformId, data, lang) {
-  try {
-    // Save to DB
-    await db.saveIntake(platform, platformId, data);
-
-    // Update client record with name + contact
-    const updates = {};
-    if (data.name) updates.name = data.name;
-    if (data.contact) {
-      const emailMatch = data.contact.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
-      const phoneMatch = data.contact.match(/(\+?1?\s?)?(\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})/);
-      if (emailMatch) updates.email = emailMatch[0];
-      if (phoneMatch) updates.phone = phoneMatch[0];
-    }
-    await db.updateClient(platform, platformId, updates);
-
-    // Detect case type from issue
-    const caseType = detectCaseTypeFromText(data.issue);
-    const attorney = getRoutedAttorney(caseType);
-
-    // Email team
-    await emailIntakeToTeam(platform, platformId, data, caseType, attorney);
-
-    // Notify team on Telegram
-    await notifyTeamTelegram(platform, platformId, data, caseType, attorney);
-
-    console.log(`✅ Intake completed for ${platform}:${platformId}`);
-  } catch (err) {
-    console.error("finishIntake error:", err.message);
-  }
-}
-
-// ── Case type detection ───────────────────────────────────
-function detectCaseTypeFromText(text) {
+// ── Case type detection ───────────────────────────────────────
+function detectCaseType(text) {
   if (!text) return "General";
   const t = text.toLowerCase();
   if (/immigra|visa|green card|citizen|deport|asylum|daca|uscis|work permit/.test(t)) return "Immigration";
-  if (/accident|crash|injury|hurt|hospital|car|slip|fall/.test(t)) return "Personal Injury";
-  if (/business|contract|lawsuit|sue|litigation|employment/.test(t)) return "Business Litigation";
-  if (/patent|trademark|copyright/.test(t)) return "Patents & Trademarks";
-  if (/trust|will|estate|probate|inheritance/.test(t)) return "Estate Planning";
+  if (/accident|crash|injury|hurt|hospital|car|slip|fall/.test(t))                    return "Personal Injury";
+  if (/business|contract|lawsuit|sue|litigation|employment/.test(t))                  return "Business Litigation";
+  if (/patent|trademark|copyright/.test(t))                                           return "Patents & Trademarks";
+  if (/trust|will|estate|probate|inheritance/.test(t))                                return "Estate Planning";
   return "General";
 }
 
 function getRoutedAttorney(caseType) {
   const routing = {
-    "Immigration": "Jue Wang / Michael Liu — jue.wang@tezlawfirm.com / michael.liu@tezlawfirm.com",
-    "Personal Injury": "Lin Mei — lin.mei@tezlawfirm.com",
-    "Business Litigation": "JJ Zhang — jj@tezlawfirm.com",
-    "Patents & Trademarks": "JJ Zhang — jj@tezlawfirm.com",
-    "Estate Planning": "JJ Zhang — jj@tezlawfirm.com",
-    "General": "JJ Zhang — jj@tezlawfirm.com",
+    "Immigration":          "Jue Wang / Michael Liu",
+    "Personal Injury":      "Lin Mei",
+    "Business Litigation":  "JJ Zhang",
+    "Patents & Trademarks": "JJ Zhang",
+    "Estate Planning":      "JJ Zhang",
+    "General":              "JJ Zhang",
   };
-  return routing[caseType] || routing["General"];
+  return routing[caseType] || "JJ Zhang";
 }
 
-// ── Email intake summary to team ──────────────────────────
-async function emailIntakeToTeam(platform, platformId, data, caseType, attorney) {
-  const SMTP_HOST = process.env.SMTP_HOST;
-  const SMTP_USER = process.env.SMTP_USER;
-  const SMTP_PASS = process.env.SMTP_PASS;
+// ── Save to DB and notify Telegram group ─────────────────────
+async function finishIntake(platform, platformId, data, lang) {
+  try {
+    // Save to PostgreSQL
+    await db.saveIntake(platform, platformId, data);
 
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    console.log("⚠️ SMTP not configured — skipping email. Set SMTP_HOST, SMTP_USER, SMTP_PASS env vars.");
+    // Update client record with name + contact info
+    const updates = { name: data.name };
+    const emailMatch = data.contact?.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    const phoneMatch = data.contact?.match(/(\+?1?\s?)?(\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})/);
+    if (emailMatch) updates.email = emailMatch[0];
+    if (phoneMatch) updates.phone = phoneMatch[0];
+    await db.updateClient(platform, platformId, updates);
+
+    const caseType = detectCaseType(data.issue);
+    const attorney = getRoutedAttorney(caseType);
+
+    // Notify team Telegram group
+    await notifyTeamTelegram(platform, data, caseType, attorney);
+
+    console.log(`✅ Intake completed — ${data.name} via ${platform}`);
+  } catch (err) {
+    console.error("finishIntake error:", err.message);
+  }
+}
+
+// ── Send intake card to Telegram group ───────────────────────
+async function notifyTeamTelegram(platform, data, caseType, attorney) {
+  const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+  const CHAT_ID   = process.env.TEAM_TELEGRAM_CHAT_ID;
+  if (!BOT_TOKEN || !CHAT_ID) {
+    console.log("⚠️  TELEGRAM_BOT_TOKEN or TEAM_TELEGRAM_CHAT_ID not set — skipping notification");
     return;
   }
 
-  const transporter = nodemailer.createTransporter({
-    host: SMTP_HOST,
-    port: 587,
-    secure: false,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-
-  const subject = `🆕 New Client Intake — ${data.name} (${caseType}) via ${platform}`;
-  const html = `
-<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-  <div style="background: #0C1C36; padding: 20px; text-align: center;">
-    <h2 style="color: #B79C62; margin: 0;">New Client Intake</h2>
-    <p style="color: #fff; margin: 5px 0 0;">Tez Law P.C. — Zara AI Assistant</p>
-  </div>
-  <div style="padding: 24px; background: #f9f9f9; border: 1px solid #e0e0e0;">
-    <table style="width: 100%; border-collapse: collapse;">
-      <tr style="border-bottom: 1px solid #e0e0e0;">
-        <td style="padding: 10px; color: #666; width: 140px;"><strong>Name</strong></td>
-        <td style="padding: 10px;">${data.name}</td>
-      </tr>
-      <tr style="border-bottom: 1px solid #e0e0e0;">
-        <td style="padding: 10px; color: #666;"><strong>Contact</strong></td>
-        <td style="padding: 10px;">${data.contact}</td>
-      </tr>
-      <tr style="border-bottom: 1px solid #e0e0e0;">
-        <td style="padding: 10px; color: #666;"><strong>Issue</strong></td>
-        <td style="padding: 10px;">${data.issue}</td>
-      </tr>
-      <tr style="border-bottom: 1px solid #e0e0e0;">
-        <td style="padding: 10px; color: #666;"><strong>Case Type</strong></td>
-        <td style="padding: 10px;"><strong style="color: #0C1C36;">${caseType}</strong></td>
-      </tr>
-      <tr style="border-bottom: 1px solid #e0e0e0;">
-        <td style="padding: 10px; color: #666;"><strong>Platform</strong></td>
-        <td style="padding: 10px;">${platform} (ID: ${platformId})</td>
-      </tr>
-      <tr>
-        <td style="padding: 10px; color: #666;"><strong>Routed to</strong></td>
-        <td style="padding: 10px;">${attorney}</td>
-      </tr>
-    </table>
-    <div style="margin-top: 20px; padding: 16px; background: #fff3cd; border-radius: 6px; border-left: 4px solid #B79C62;">
-      <strong>⚡ Action needed:</strong> Please follow up with ${data.name} within 1 business day.
-    </div>
-  </div>
-  <div style="padding: 16px; text-align: center; color: #999; font-size: 12px;">
-    Tez Law P.C. · West Covina, CA · 626-678-8677
-  </div>
-</div>`;
-
-  await transporter.sendMail({
-    from: `"Zara — Tez Law" <${SMTP_USER}>`,
-    to: "jj@tezlawfirm.com",
-    cc: getCcForCaseType(caseType),
-    subject,
-    html,
-  });
-
-  console.log(`📧 Intake email sent for ${data.name}`);
-}
-
-function getCcForCaseType(caseType) {
-  const cc = {
-    "Immigration": "jue.wang@tezlawfirm.com,michael.liu@tezlawfirm.com",
-    "Personal Injury": "lin.mei@tezlawfirm.com",
+  const platformEmoji = {
+    telegram:  "📱 Telegram",
+    whatsapp:  "💬 WhatsApp",
+    wechat:    "🟢 WeChat",
+    website:   "🌐 Website",
   };
-  return cc[caseType] || "";
-}
 
-// ── Telegram notification to team ────────────────────────
-async function notifyTeamTelegram(platform, platformId, data, caseType, attorney) {
-  const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-  const CHAT_ID   = process.env.TEAM_TELEGRAM_CHAT_ID;
-  if (!BOT_TOKEN || !CHAT_ID) return;
-
-  const msg = `📋 *New Client Intake*\n\n` +
-    `👤 *Name:* ${data.name}\n` +
-    `📞 *Contact:* ${data.contact}\n` +
-    `📝 *Issue:* ${data.issue}\n` +
-    `⚖️ *Case Type:* ${caseType}\n` +
-    `🔀 *Route to:* ${attorney}\n` +
-    `📱 *Via:* ${platform}\n\n` +
-    `⚡ Follow up within 1 business day!`;
+  const msg =
+    `📋 *NEW CLIENT INTAKE*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *Name:* ${escMd(data.name)}\n` +
+    `📞 *Contact:* ${escMd(data.contact)}\n` +
+    `📝 *Issue:* ${escMd(data.issue)}\n` +
+    `⚖️ *Case Type:* ${escMd(caseType)}\n` +
+    `🔀 *Route to:* ${escMd(attorney)}\n` +
+    `📱 *Via:* ${escMd(platformEmoji[platform] || platform)}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `⚡ *Follow up within 1 business day\\!*`;
 
   await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    chat_id: CHAT_ID,
-    text: msg,
-    parse_mode: "Markdown",
+    chat_id:    CHAT_ID,
+    text:       msg,
+    parse_mode: "MarkdownV2",
   });
+
+  console.log(`📣 Intake notification sent to Telegram group — ${data.name}`);
 }
 
-// ── Reset intake for a user (e.g. on /reset) ─────────────
+// Escape special chars for MarkdownV2
+function escMd(text) {
+  if (!text) return "";
+  return String(text).replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, "\\$&");
+}
+
+// ── Reset intake for a user (on /reset) ──────────────────────
 function resetIntake(platform, platformId) {
   delete intakeState[`${platform}:${platformId}`];
 }
